@@ -1,0 +1,201 @@
+import 'package:flutter/material.dart';
+import 'package:hello/components/error_message.dart';
+import 'package:hello/components/icon_button.dart';
+import 'package:hello/components/input.dart';
+import 'package:hello/components/more_menu.dart';
+import 'package:hello/other/colors.dart' as colors;
+import 'package:hello/pages/main_page.dart';
+import 'package:hello/server/functions.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final usernameController = TextEditingController();
+
+  final passwordController = TextEditingController();
+
+  bool rememberMe = false, isDisabled = true;
+  int i = 0;
+
+  void remember(bool? value) {
+    setState(() {
+      rememberMe = !rememberMe;
+    });
+  }
+
+  bool checkFields(String? value) {
+    bool condition = usernameController.text.isNotEmpty &&
+        passwordController.text.isNotEmpty;
+    setState(() {
+      if (condition) {
+        isDisabled = false;
+      } else {
+        isDisabled = true;
+      }
+    });
+    return condition;
+  }
+
+  void saveUser(bool isSaving) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool("saving", isSaving);
+  }
+
+  void openUser() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    bool isSaving = prefs.getBool("saving")!;
+    if (isSaving) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const MainPage(),
+        ),
+      );
+    }
+  }
+
+  Future<void> login() async {
+    if (usernameController.text.isNotEmpty && passwordController.text.isNotEmpty) {
+      String username = usernameController.text;
+      String password = passwordController.text;
+      bool ok = await loginTry(username, password);
+      //bool ok = true;
+      saveUser(ok && rememberMe);
+      if (ok) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const MainPage(),
+          ),
+        );
+      } else {
+        showErrorLogin(context);
+      }
+    }
+  }
+
+  @override
+  void initState() {
+    openUser();
+    super.initState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+        body: SafeArea(
+            child: Column(
+      children: [
+        const Row(
+          children: [
+            Spacer(),
+            MoreMenu(canLeave: false),
+          ],
+        ),
+        const Spacer(),
+        Center(
+          child: Container(
+              height: 350,
+              width: 340,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                shape: BoxShape.rectangle,
+                color: Theme.of(context).colorScheme.secondary,
+              ),
+              child: Column(
+                children: [
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Image.asset(
+                          Theme.of(context).textTheme.displayLarge?.color != Colors.white
+                              ? 'lib/images/icon_new.png'
+                              : 'lib/images/icon_black.png',
+                          height: 96,
+                          width: 96),
+                      Text('eCalculator',
+                          style: TextStyle(
+                              fontSize: 28, color: colors.defaultPrimary)),
+                    ],
+                  ),
+                  const SizedBox(height: 2,),
+                  MyInput(
+                    controller: usernameController,
+                    hint: 'Логин',
+                    onChanged: checkFields,
+                  ),
+                  const SizedBox(height: 20),
+                  MyInput(
+                    controller: passwordController,
+                    hint: 'Пароль',
+                    onChanged: checkFields,
+                  ),
+                  Container(
+                    padding: const EdgeInsets.only(left: 10.0),
+                    child: Row(
+                      children: [
+                        Checkbox(
+                            activeColor: Theme.of(context).colorScheme.primary,
+                            side: const BorderSide(color: Colors.grey),
+                            value: rememberMe,
+                            onChanged: (value) => remember(value)),
+                        const Text(
+                          'Запомнить меня',
+                          style: TextStyle(color: Colors.grey),
+                        )
+                      ],
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: login,
+                    child: Container(
+                        height: 48,
+                        margin: const EdgeInsets.symmetric(horizontal: 25.0),
+                        padding: const EdgeInsets.symmetric(horizontal: 25.0),
+                        decoration: BoxDecoration(
+                            color: isDisabled
+                                ? Theme.of(context).disabledColor
+                                : Theme.of(context).colorScheme.primary,
+                            borderRadius: BorderRadius.circular(10.0)),
+                        child: Center(
+                          child: Text(
+                            'Войти',
+                            style: TextStyle(
+                                fontSize: 18,
+                                color: Theme.of(context)
+                                    .textTheme
+                                    .displaySmall
+                                    ?.color),
+                          ),
+                        )),
+                  ),
+                ],
+              )),
+        ),
+        const Spacer(),
+        Text(
+          'Связаться с разработчиком',
+          style: TextStyle(
+              fontSize: 18,
+              color: Theme.of(context).textTheme.displaySmall?.color),
+        ),
+        const SizedBox(height: 15),
+        const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            MyIconButton(path: 'lib/images/telegram_icon.png', type: 0),
+            SizedBox(width: 100),
+            MyIconButton(path: 'lib/images/mail_icon.png', type: 1)
+          ],
+        ),
+        const SizedBox(height: 15),
+      ],
+    )));
+  }
+}
