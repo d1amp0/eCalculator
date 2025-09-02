@@ -53,7 +53,7 @@ class _PopoverButtonState extends State<PopoverButton> {
         list;
       });
     } else {
-      list = ['2024/2025', '2023/2024'];
+      list = ['2025/2026', '2024/2025', '2023/2024'];
     }
   }
 
