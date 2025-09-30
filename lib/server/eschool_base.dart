@@ -52,7 +52,6 @@ class EschoolBase {
         "cliType": "web",
         "cliVer": "v.1588",
         "pushToken": getRandomString(64),
-        //"deviceId": "bcc7YLGUY1RfsUeYe9Pknnmgw4Iljg9C",
         "deviceId": "8ezTOdgnXcJlv5gQR0Qqgb52kO5l4jht",
         "deviceName": "Chrome",
         "deviceModel": 136,
@@ -66,11 +65,9 @@ class EschoolBase {
     if (response.statusCode == 200) {
       // Сохраняем куки
       _updateCookies(response);
-      //print("I got into account");
 
       // Получаем userId
       final stateResponse = await getState();
-      //print("I got state");
       userId = stateResponse['userId'];
       return 200;
     }
@@ -79,9 +76,6 @@ class EschoolBase {
 
   void _updateCookies(http.Response response) {
     final rawCookies = response.headers['set-cookie'];
-    //JSESSIONID=<redacted>; Path=/ec-server; Secure; HttpOnly; SameSite=Lax
-    //print(response.headers);
-    //print(response.headers['set-cookie']);
     if (rawCookies != null) {
       rawCookies.split(',').forEach((cookie) {
         final cookieParts = cookie.split(';')[0].split('=');
@@ -90,7 +84,6 @@ class EschoolBase {
         }
       });
     }
-    //print(cookies);
   }
 
   Future<Map<String, dynamic>> getState() async {
@@ -104,14 +97,10 @@ class EschoolBase {
       'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
           "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 "
           "Safari/537.36"});
-    /*print("I am trying get to $url with ${_getCookies()}; "
-        "site_ver=app; clientVer=v.1587; es_prs=93799; es_user=150251; es_org=6; "
-        "es_pos=S; clientUrl=/Private/student/diary/1%3Fd1%3D1746392400000");*/
     if (response.statusCode == 401) {
       await auth();
       return _get(url);
     }
-    //print("Get is ok!");
     return response;
   }
 

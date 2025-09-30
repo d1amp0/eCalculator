@@ -11,37 +11,44 @@ class MainPage extends StatefulWidget {
 }
 
 class _MainPageState extends State<MainPage> {
-  List<Widget> pageList = const [
+  static const List<Widget> pageList = [
     MarksPage(),
     HomeworkPage(),
     SettingsPage(),
   ];
-  int pageIndex = 0;
+  int _pageIndex = 0;
+  final PageController _controller = PageController();
+
+  void _onNavTap(int index) {
+    _controller.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _onPageChanged(int index) {
+    setState(() => _pageIndex = index);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: pageIndex,
+      body: PageView(
+        controller: _controller,
+        onPageChanged: _onPageChanged,
         children: pageList,
       ),
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
             backgroundColor: Theme.of(context).colorScheme.secondary,
-            labelTextStyle: MaterialStateProperty.all(TextStyle(
-                color: Theme.of(context).textTheme.displayLarge?.color),
-            )
         ),
         child: NavigationBar(
-          onDestinationSelected: (int index) {
-            setState(() {
-              pageIndex = index;
-            });
-          },
+          onDestinationSelected: _onNavTap,
           height: 50,
           labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
           indicatorColor: Theme.of(context).colorScheme.primary,
-          selectedIndex: pageIndex,
+          selectedIndex: _pageIndex,
           destinations: <Widget>[
             NavigationDestination(
               icon: Icon(Icons.calculate, color: Theme.of(context).textTheme.displayLarge?.color, size: 20,),

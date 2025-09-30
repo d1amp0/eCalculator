@@ -21,7 +21,6 @@ class _LoginPageState extends State<LoginPage> {
   final passwordController = TextEditingController();
 
   bool rememberMe = false, isDisabled = true;
-  int i = 0;
 
   void remember(bool? value) {
     setState(() {
@@ -29,17 +28,11 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
-  bool checkFields(String? value) {
-    bool condition = usernameController.text.isNotEmpty &&
-        passwordController.text.isNotEmpty;
+  void checkFields() {
     setState(() {
-      if (condition) {
-        isDisabled = false;
-      } else {
-        isDisabled = true;
-      }
+      isDisabled = usernameController.text.isNotEmpty &&
+          passwordController.text.isNotEmpty;
     });
-    return condition;
   }
 
   void saveUser(bool isSaving) async {
@@ -49,9 +42,9 @@ class _LoginPageState extends State<LoginPage> {
 
   void openUser() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    bool isSaving = prefs.getBool("saving")!;
+    bool isSaving = prefs.getBool("saving") ?? false;
     if (isSaving) {
-      Navigator.push(
+      Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (context) => const MainPage(),
@@ -68,7 +61,7 @@ class _LoginPageState extends State<LoginPage> {
       //bool ok = true;
       saveUser(ok && rememberMe);
       if (ok) {
-        Navigator.push(
+        Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (context) => const MainPage(),
@@ -128,13 +121,13 @@ class _LoginPageState extends State<LoginPage> {
                   MyInput(
                     controller: usernameController,
                     hint: 'Логин',
-                    onChanged: checkFields,
+                    onChanged: (_) => checkFields(),
                   ),
                   const SizedBox(height: 20),
                   MyInput(
                     controller: passwordController,
                     hint: 'Пароль',
-                    onChanged: checkFields,
+                    onChanged: (_) => checkFields(),
                   ),
                   Container(
                     padding: const EdgeInsets.only(left: 10.0),

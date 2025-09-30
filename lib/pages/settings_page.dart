@@ -82,19 +82,6 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           Row(
             children: [
-              // const SizedBox(
-              //   width: 10,
-              // ),
-              // GestureDetector(
-              //   onTap: () {
-              //     Navigator.pop(context);
-              //   },
-              //   child: Icon(
-              //     Icons.arrow_back_sharp,
-              //     color: Theme.of(context).textTheme.displaySmall?.color,
-              //     size: 30,
-              //   ),
-              // ),
               const Spacer(flex: 3,),
               Text(
                 "Настройки",
