@@ -20,7 +20,7 @@ class _LoginPageState extends State<LoginPage> {
 
   final passwordController = TextEditingController();
 
-  bool rememberMe = false, isDisabled = true;
+  bool rememberMe = false, isEnabled = false, isLoading = false;
 
   void remember(bool? value) {
     setState(() {
@@ -30,7 +30,7 @@ class _LoginPageState extends State<LoginPage> {
 
   void checkFields() {
     setState(() {
-      isDisabled = usernameController.text.isNotEmpty &&
+      isEnabled = usernameController.text.isNotEmpty &&
           passwordController.text.isNotEmpty;
     });
   }
@@ -54,22 +54,29 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> login() async {
-    if (usernameController.text.isNotEmpty && passwordController.text.isNotEmpty) {
-      String username = usernameController.text;
-      String password = passwordController.text;
-      bool ok = await loginTry(username, password);
-      //bool ok = true;
-      saveUser(ok && rememberMe);
-      if (ok) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const MainPage(),
-          ),
-        );
-      } else {
-        showErrorLogin(context);
+    if (isLoading) return;
+    setState(() => isLoading = true);
+    try {
+      if (usernameController.text.isNotEmpty &&
+          passwordController.text.isNotEmpty) {
+        String username = usernameController.text;
+        String password = passwordController.text;
+        bool ok = await loginTry(username, password);
+        //bool ok = true;
+        saveUser(ok && rememberMe);
+        if (ok) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const MainPage(),
+            ),
+          );
+        } else {
+          showErrorLogin(context);
+        }
       }
+    } finally {
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -107,17 +114,21 @@ class _LoginPageState extends State<LoginPage> {
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Image.asset(
-                          Theme.of(context).textTheme.displayLarge?.color != Colors.white
+                          Theme.of(context).textTheme.displayLarge?.color !=
+                                  Colors.white
                               ? 'lib/images/icon_new.png'
                               : 'lib/images/icon_black.png',
                           height: 96,
-                          width: 96),
+                          width: 96,
+                          cacheWidth: 192,),
                       Text('eCalculator',
                           style: TextStyle(
                               fontSize: 28, color: colors.defaultPrimary)),
                     ],
                   ),
-                  const SizedBox(height: 2,),
+                  const SizedBox(
+                    height: 2,
+                  ),
                   MyInput(
                     controller: usernameController,
                     hint: 'Логин',
@@ -147,25 +158,43 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   GestureDetector(
                     onTap: login,
-                    child: Container(
+                    behavior: HitTestBehavior.opaque,
+                    child: AnimatedContainer(
                         height: 48,
                         margin: const EdgeInsets.symmetric(horizontal: 25.0),
                         padding: const EdgeInsets.symmetric(horizontal: 25.0),
                         decoration: BoxDecoration(
-                            color: isDisabled
-                                ? Theme.of(context).disabledColor
-                                : Theme.of(context).colorScheme.primary,
+                            color: isEnabled
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context).disabledColor,
                             borderRadius: BorderRadius.circular(10.0)),
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeInOut,
                         child: Center(
-                          child: Text(
-                            'Войти',
-                            style: TextStyle(
-                                fontSize: 18,
-                                color: Theme.of(context)
-                                    .textTheme
-                                    .displaySmall
-                                    ?.color),
-                          ),
+                          child: isLoading
+                              ? SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Theme.of(context)
+                                              .textTheme
+                                              .displaySmall
+                                              ?.color ??
+                                          Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  'Войти',
+                                  style: TextStyle(
+                                      fontSize: 18,
+                                      color: Theme.of(context)
+                                          .textTheme
+                                          .displaySmall
+                                          ?.color),
+                                ),
                         )),
                   ),
                 ],

@@ -13,7 +13,10 @@ class MarksPage extends StatefulWidget {
   State<MarksPage> createState() => _MarksPageState();
 }
 
-class _MarksPageState extends State<MarksPage> {
+class _MarksPageState extends State<MarksPage> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   final yearController = TextEditingController(),
       periodController = TextEditingController();
   bool isTable = false,
@@ -90,6 +93,7 @@ class _MarksPageState extends State<MarksPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       body: SafeArea(
           child: Column(
