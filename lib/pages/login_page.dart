@@ -1,11 +1,11 @@
+import 'package:eCalculator/components/error_message.dart';
+import 'package:eCalculator/components/icon_button.dart';
+import 'package:eCalculator/components/input.dart';
+import 'package:eCalculator/components/more_menu.dart';
+import 'package:eCalculator/pages/main_page.dart';
+import 'package:eCalculator/server/functions.dart';
 import 'package:flutter/material.dart';
-import 'package:hello/components/error_message.dart';
-import 'package:hello/components/icon_button.dart';
-import 'package:hello/components/input.dart';
-import 'package:hello/components/more_menu.dart';
-import 'package:hello/other/colors.dart' as colors;
-import 'package:hello/pages/main_page.dart';
-import 'package:hello/server/functions.dart';
+import 'package:eCalculator/other/colors.dart' as colors;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginPage extends StatefulWidget {
@@ -116,8 +116,8 @@ class _LoginPageState extends State<LoginPage> {
                       Image.asset(
                           Theme.of(context).textTheme.displayLarge?.color !=
                                   Colors.white
-                              ? 'lib/images/icon_new.png'
-                              : 'lib/images/icon_black.png',
+                              ? 'lib/images/icon_new_year.png'
+                              : 'lib/images/icon_new_year_black.png',
                           height: 96,
                           width: 96,
                           cacheWidth: 192,),
@@ -148,6 +148,9 @@ class _LoginPageState extends State<LoginPage> {
                             activeColor: Theme.of(context).colorScheme.primary,
                             side: const BorderSide(color: Colors.grey),
                             value: rememberMe,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(5.0),
+                            ),
                             onChanged: (value) => remember(value)),
                         const Text(
                           'Запомнить меня',

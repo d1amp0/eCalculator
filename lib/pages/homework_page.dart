@@ -2,11 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
-import 'package:hello/components/more_menu.dart';
-import 'package:hello/other/database_helper.dart';
-import 'package:hello/pages/add_task_page.dart';
-import 'package:hello/pages/task_page.dart';
-import 'package:hello/server/functions.dart';
+import 'package:eCalculator/components/more_menu.dart';
+import 'package:eCalculator/other/database_helper.dart';
+import 'package:eCalculator/pages/add_task_page.dart';
+import 'package:eCalculator/pages/task_page.dart';
+import 'package:eCalculator/server/functions.dart';
 import 'package:intl/intl.dart';
 
 class HomeworkPage extends StatefulWidget {

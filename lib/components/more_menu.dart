@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:hello/components/popover_button.dart';
-import 'package:hello/components/popup_menu.dart';
+import 'package:eCalculator/components/popover_button.dart';
+import 'package:eCalculator/components/popup_menu.dart';
 
 class MoreMenu extends StatefulWidget {
   final bool canLeave;

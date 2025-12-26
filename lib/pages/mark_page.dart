@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:hello/components/mark_button.dart';
-import 'package:hello/components/more_menu.dart';
-import 'package:hello/components/plus_button.dart';
-import 'package:hello/components/plused_button.dart';
-import 'package:hello/server/functions.dart';
+import 'package:eCalculator/components/mark_button.dart';
+import 'package:eCalculator/components/more_menu.dart';
+import 'package:eCalculator/components/plus_button.dart';
+import 'package:eCalculator/components/plused_button.dart';
+import 'package:eCalculator/server/functions.dart';
 
 class MarkPage extends StatefulWidget {
   final String name;

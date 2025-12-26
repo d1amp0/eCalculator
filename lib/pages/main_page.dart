@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:hello/pages/homework_page.dart';
-import 'package:hello/pages/marks_page.dart';
-import 'package:hello/pages/settings_page.dart';
+import 'package:eCalculator/pages/homework_page.dart';
+import 'package:eCalculator/pages/marks_page.dart';
+import 'package:eCalculator/pages/settings_page.dart';
 
 class MainPage extends StatefulWidget {
   const MainPage({super.key});

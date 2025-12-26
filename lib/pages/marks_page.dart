@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:hello/components/error_message.dart';
-import 'package:hello/components/more_menu.dart';
-import 'package:hello/components/popover_button.dart';
-import 'package:hello/pages/mark_page.dart';
-import 'package:hello/server/functions.dart';
+import 'package:eCalculator/components/error_message.dart';
+import 'package:eCalculator/components/more_menu.dart';
+import 'package:eCalculator/components/popover_button.dart';
+import 'package:eCalculator/pages/mark_page.dart';
+import 'package:eCalculator/server/functions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class MarksPage extends StatefulWidget {
@@ -48,10 +48,14 @@ class _MarksPageState extends State<MarksPage> with AutomaticKeepAliveClientMixi
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     try {
       yearController.text = prefs.getString("year")!;
-    } on Exception {}
+    } on Exception {
+      yearController.text = "2025/2026";
+    }
     try {
       periodController.text = prefs.getString("period")!;
-    } on Exception {}
+    } on Exception {
+      periodController.text = "3 четверть";
+    }
     return true;
   }
 

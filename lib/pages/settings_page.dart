@@ -1,14 +1,16 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:hello/components/icon_button.dart';
-import 'package:hello/components/more_menu.dart';
-import 'package:hello/components/popover_button.dart';
-import 'package:hello/components/theme_provider.dart';
+import 'package:eCalculator/components/icon_button.dart';
+import 'package:eCalculator/components/more_menu.dart';
+import 'package:eCalculator/components/popover_button.dart';
+import 'package:eCalculator/components/theme_provider.dart';
+import 'package:eCalculator/main.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsPage extends StatefulWidget {
   final PopoverButton? popoverButton;
+
   const SettingsPage({super.key, this.popoverButton});
 
   @override
@@ -20,6 +22,11 @@ class _SettingsPageState extends State<SettingsPage> {
   int? themeSliding, periodSliding, markSliding;
   bool withPM = false;
   final prefs = SharedPreferences.getInstance();
+
+  void reset() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+  }
 
   void saveTheme() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -76,13 +83,79 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    void leave() {
+      showDialog(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              backgroundColor: Theme.of(context).colorScheme.secondary,
+              content: SizedBox(
+                height: 90,
+                child: Column(
+                  children: [
+                    Text(
+                      'Вы уверены, что хотите удалить все настройки и выйти из аккаунта?',
+                      style: TextStyle(
+                          fontSize: 16,
+                          color:
+                              Theme.of(context).textTheme.displayLarge?.color),
+                    ),
+                    const SizedBox(
+                      height: 10,
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        GestureDetector(
+                          onTap: () async {
+                            reset();
+                            print("Ready");
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(builder: (context) => const App()),
+                                  (route) => false,
+                            );
+                          },
+                          child: Text('Да',
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  color: Theme.of(context)
+                                      .textTheme
+                                      .displayLarge
+                                      ?.color)),
+                        ),
+                        const SizedBox(
+                          width: 20,
+                        ),
+                        GestureDetector(
+                            onTap: () {
+                              Navigator.pop(context);
+                            },
+                            child: Text('Отмена',
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    color: Theme.of(context)
+                                        .textTheme
+                                        .displayLarge
+                                        ?.color))),
+                      ],
+                    )
+                  ],
+                ),
+              ),
+            );
+          });
+    }
+
     return Scaffold(
       body: SafeArea(
           child: Column(
         children: [
           Row(
             children: [
-              const Spacer(flex: 3,),
+              const Spacer(
+                flex: 3,
+              ),
               Text(
                 "Настройки",
                 style: TextStyle(
@@ -90,7 +163,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   fontSize: 32,
                 ),
               ),
-              const Spacer(flex: 2,),
+              const Spacer(
+                flex: 2,
+              ),
               const MoreMenu(canLeave: true)
             ],
           ),
@@ -186,10 +261,31 @@ class _SettingsPageState extends State<SettingsPage> {
                 'Использовать + и - для оценок',
                 style: TextStyle(
                     color: Theme.of(context).textTheme.displaySmall?.color,
-                    fontSize: 16),
+                    fontSize: 18),
               ),
               const Spacer()
             ],
+          ),
+          const SizedBox(
+            height: 15,
+          ),
+          GestureDetector(
+            onTap: leave,
+            behavior: HitTestBehavior.opaque,
+            child: AnimatedContainer(
+                height: 40,
+                margin: const EdgeInsets.symmetric(horizontal: 100.0),
+                decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(10.0)),
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                child: const Center(
+                  child: Text(
+                    'Сбросить настройки',
+                    style: TextStyle(fontSize: 18, color: Colors.white),
+                  ),
+                )),
           ),
           const Spacer(),
           Text(

@@ -5,7 +5,7 @@ import 'eschool_base.dart';
 Future<bool> loginTry(String username, String password) async {
   try {
     final client = await EschoolBase.login(username, password: password);
-    client.save(filename: 'eschool_account');
+    client.save();
   } on Exception {
     return false;
   }
@@ -13,7 +13,7 @@ Future<bool> loginTry(String username, String password) async {
 }
 
 Future<Map<String, List<List>>> getMarksMap(String eild) async {
-  final client = await EschoolBase.fromFile('eschool_account');
+  final client = await EschoolBase.fromFile();
   client.period = eild;
   List marks = await client.marksApp();
   //List<List> marks = [
@@ -87,7 +87,7 @@ Future<Map<String, List<List>>> getMarksMap(String eild) async {
 }
 
 Future<String> eild(name) async {
-  final client = await EschoolBase.fromFile('eschool_account');
+  final client = await EschoolBase.fromFile();
   int eild = await client.getEild(name);
   return eild.toString();
   return "000000";
@@ -128,7 +128,7 @@ String extractText(String line) {
 }
 
 Future<List> homeworkServer() async {
-  final client = await EschoolBase.fromFile('eschool_account');
+  final client = await EschoolBase.fromFile();
   return await client.homeworks(d1: DateTime.now().add(const Duration(days: -7)).millisecondsSinceEpoch, d2: DateTime.now().add(const Duration(days: 14)).millisecondsSinceEpoch);
   //return [
   //  [

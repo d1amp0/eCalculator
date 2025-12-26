@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:hello/other/colors.dart' as colors;
+import 'package:eCalculator/other/colors.dart' as colors;
 
 ThemeData defaultMode = ThemeData(
     scaffoldBackgroundColor: colors.defaultPrimary,

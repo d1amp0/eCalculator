@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:hello/components/more_menu.dart';
-import 'package:hello/other/database_helper.dart';
-import 'package:hello/other/task.dart';
+import 'package:eCalculator/components/more_menu.dart';
+import 'package:eCalculator/other/database_helper.dart';
+import 'package:eCalculator/other/task.dart';
 import 'package:intl/intl.dart';
 
 class AddTaskPage extends StatefulWidget {

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
-import 'package:hello/components/more_menu.dart';
-import 'package:hello/other/database_helper.dart';
+import 'package:eCalculator/components/more_menu.dart';
+import 'package:eCalculator/other/database_helper.dart';
 
 class TaskPage extends StatefulWidget {
   final List task;

@@ -42,7 +42,6 @@ class EschoolBase {
   }
 
   Future<int> auth() async {
-    print("Pressed!");
     final url = Uri.parse('https://app.eschool.center/ec-server/login');
     final headers = {'User-Agent': 'Mozilla/5.0'};
     final body = {
@@ -61,12 +60,8 @@ class EschoolBase {
     };
 
     final response = await http.post(url, headers: headers, body: body);
-    print(response.statusCode);
     if (response.statusCode == 200) {
-      // Сохраняем куки
       _updateCookies(response);
-
-      // Получаем userId
       final stateResponse = await getState();
       userId = stateResponse['userId'];
       return 200;
@@ -110,14 +105,14 @@ class EschoolBase {
 
   static Future<EschoolBase> login(String login, {String? password, String period = '204464', String? filename}) async {
     final base = EschoolBase(period: period, filename: filename);
-    password ??= stdin.readLineSync()!; // Ввод пароля через консоль
+    password ??= stdin.readLineSync()!;
     base.username = login;
     base.password = sha256.convert(utf8.encode(password)).toString();
     final statusCode = await base.auth();
     return statusCode == 200 ? base : throw Exception('Login failed');
   }
 
-  void save({String filename = 'eschool_account'}) async {
+  void save() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final data = json.encode({
       'username': username,
@@ -130,7 +125,7 @@ class EschoolBase {
     prefs.setString("user", data);
   }
 
-  static Future<EschoolBase> fromFile(String filename) async {
+  static Future<EschoolBase> fromFile() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final data = json.decode(prefs.getString("user")!);
     return EschoolBase(
@@ -280,7 +275,6 @@ class EschoolBase {
     final url = Uri.parse(
         'https://app.eschool.center/ec-server/student/diary?userId=$userId&d1=$startDate&d2=$endDate');
     final response = await _get(url);
-    print(response);
     return List<Map<String, dynamic>>.from(jsonDecode(response.body)['lesson'] ?? []);
   }
 
