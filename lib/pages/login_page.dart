@@ -1,12 +1,12 @@
-import 'package:eCalculator/components/error_message.dart';
-import 'package:eCalculator/components/icon_button.dart';
-import 'package:eCalculator/components/input.dart';
-import 'package:eCalculator/components/more_menu.dart';
-import 'package:eCalculator/pages/main_page.dart';
-import 'package:eCalculator/server/functions.dart';
+import 'package:ecalculator/components/error_message.dart';
+import 'package:ecalculator/components/icon_button.dart';
+import 'package:ecalculator/components/input.dart';
+import 'package:ecalculator/components/more_menu.dart';
+import 'package:ecalculator/pages/main_page.dart';
+import 'package:ecalculator/server/functions.dart';
+import 'package:ecalculator/services/eschool/eschool_session.dart';
 import 'package:flutter/material.dart';
-import 'package:eCalculator/other/colors.dart' as colors;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ecalculator/other/colors.dart' as colors;
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -20,7 +20,10 @@ class _LoginPageState extends State<LoginPage> {
 
   final passwordController = TextEditingController();
 
-  bool rememberMe = false, isEnabled = false, isLoading = false;
+  bool rememberMe = false,
+      isEnabled = false,
+      isLoading = false,
+      isRestoringSession = true;
 
   void remember(bool? value) {
     setState(() {
@@ -35,22 +38,19 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
-  void saveUser(bool isSaving) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setBool("saving", isSaving);
-  }
-
-  void openUser() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    bool isSaving = prefs.getBool("saving") ?? false;
-    if (isSaving) {
+  Future<void> restoreSession() async {
+    final restored = await eschoolSession.restore();
+    if (!mounted) return;
+    if (restored) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (context) => const MainPage(),
         ),
       );
+      return;
     }
+    setState(() => isRestoringSession = false);
   }
 
   Future<void> login() async {
@@ -61,10 +61,22 @@ class _LoginPageState extends State<LoginPage> {
           passwordController.text.isNotEmpty) {
         String username = usernameController.text;
         String password = passwordController.text;
-        bool ok = await loginTry(username, password);
-        //bool ok = true;
-        saveUser(ok && rememberMe);
-        if (ok) {
+        final result = await loginTry(
+          username,
+          password,
+          rememberMe: rememberMe,
+        );
+        if (!mounted) return;
+        if (result != LoginResult.invalidCredentials) {
+          if (result == LoginResult.authenticatedWithoutPersistence) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Безопасное хранилище недоступно. Вход действует только до закрытия приложения.',
+                ),
+              ),
+            );
+          }
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -82,12 +94,22 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void initState() {
-    openUser();
     super.initState();
+    restoreSession();
+  }
+
+  @override
+  void dispose() {
+    usernameController.dispose();
+    passwordController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (isRestoringSession) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return Scaffold(
         body: SafeArea(
             child: Column(
@@ -114,13 +136,14 @@ class _LoginPageState extends State<LoginPage> {
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Image.asset(
-                          Theme.of(context).textTheme.displayLarge?.color !=
-                                  Colors.white
-                              ? 'lib/images/icon_new_year.png'
-                              : 'lib/images/icon_new_year_black.png',
-                          height: 96,
-                          width: 96,
-                          cacheWidth: 192,),
+                        Theme.of(context).textTheme.displayLarge?.color !=
+                                Colors.white
+                            ? 'lib/images/icon_new.png'
+                            : 'lib/images/icon_black.png',
+                        height: 96,
+                        width: 96,
+                        cacheWidth: 192,
+                      ),
                       Text('eCalculator',
                           style: TextStyle(
                               fontSize: 28, color: colors.defaultPrimary)),

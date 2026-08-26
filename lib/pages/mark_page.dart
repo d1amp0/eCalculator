@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:eCalculator/components/mark_button.dart';
-import 'package:eCalculator/components/more_menu.dart';
-import 'package:eCalculator/components/plus_button.dart';
-import 'package:eCalculator/components/plused_button.dart';
-import 'package:eCalculator/server/functions.dart';
+import 'package:ecalculator/components/mark_button.dart';
+import 'package:ecalculator/components/more_menu.dart';
+import 'package:ecalculator/components/plus_button.dart';
+import 'package:ecalculator/components/plused_button.dart';
+import 'package:ecalculator/server/functions.dart';
 
 class MarkPage extends StatefulWidget {
   final String name;
@@ -83,7 +83,7 @@ class _MarkPageState extends State<MarkPage> {
     return Scaffold(
       body: SafeArea(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.start,
         children: [
           Row(
             children: [

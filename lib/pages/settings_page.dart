@@ -1,12 +1,13 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:eCalculator/components/icon_button.dart';
-import 'package:eCalculator/components/more_menu.dart';
-import 'package:eCalculator/components/popover_button.dart';
-import 'package:eCalculator/components/theme_provider.dart';
-import 'package:eCalculator/main.dart';
+import 'package:ecalculator/components/icon_button.dart';
+import 'package:ecalculator/components/more_menu.dart';
+import 'package:ecalculator/components/popover_button.dart';
+import 'package:ecalculator/components/theme_provider.dart';
+import 'package:ecalculator/pages/login_page.dart';
+import 'package:ecalculator/services/eschool/eschool_session.dart';
+import 'package:ecalculator/storage/settings_storage.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsPage extends StatefulWidget {
   final PopoverButton? popoverButton;
@@ -21,56 +22,39 @@ class _SettingsPageState extends State<SettingsPage> {
   List<bool> isSelected = [false, false, false];
   int? themeSliding, periodSliding, markSliding;
   bool withPM = false;
-  final prefs = SharedPreferences.getInstance();
-
-  void reset() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-  }
+  final settings = SettingsStorage();
 
   void saveTheme() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setInt("theme", themeSliding!);
+    await settings.writeInt("theme", themeSliding!);
   }
 
   void getTheme() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    int? theme = prefs.getInt("theme");
+    int? theme = await settings.readInt("theme");
     theme != null ? themeSliding = theme : themeSliding = 0;
-    setState(() {
-      themeSliding;
-    });
+    if (mounted) setState(() {});
   }
 
   void savePeriod() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setInt("period_type", periodSliding!);
+    await settings.writeInt("period_type", periodSliding!);
   }
 
   void getPeriod() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    int? period = prefs.getInt("period_type");
+    int? period = await settings.readInt("period_type");
     period != null ? periodSliding = period : periodSliding = 0;
-    setState(() {
-      periodSliding;
-    });
+    if (mounted) setState(() {});
   }
 
   void savePM(bool? value) async {
     setState(() {
       withPM = !withPM;
     });
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setBool("mark_type", withPM);
+    await settings.writeBool("mark_type", withPM);
   }
 
   void getPM() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    bool? mark = prefs.getBool("mark_type");
+    bool? mark = await settings.readBool("mark_type");
     mark != null ? withPM = mark : withPM = false;
-    setState(() {
-      withPM;
-    });
+    if (mounted) setState(() {});
   }
 
   @override
@@ -94,7 +78,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Column(
                   children: [
                     Text(
-                      'Вы уверены, что хотите удалить все настройки и выйти из аккаунта?',
+                      'Вы уверены, что хотите выйти из аккаунта?',
                       style: TextStyle(
                           fontSize: 16,
                           color:
@@ -108,13 +92,26 @@ class _SettingsPageState extends State<SettingsPage> {
                       children: [
                         GestureDetector(
                           onTap: () async {
-                            reset();
-                            print("Ready");
-                            Navigator.pushAndRemoveUntil(
-                              context,
-                              MaterialPageRoute(builder: (context) => const App()),
-                                  (route) => false,
-                            );
+                            try {
+                              await eschoolSession.logout();
+                              if (!context.mounted) return;
+                              Navigator.pushAndRemoveUntil(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const LoginPage(),
+                                ),
+                                (route) => false,
+                              );
+                            } on Object {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Не удалось очистить безопасное хранилище. Повторите выход.',
+                                  ),
+                                ),
+                              );
+                            }
                           },
                           child: Text('Да',
                               style: TextStyle(

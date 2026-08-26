@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:eCalculator/other/themes.dart';
+import 'package:ecalculator/other/themes.dart';
 
 class ThemeProvider with ChangeNotifier {
   ThemeData themeDataCurrent = defaultMode;
@@ -14,7 +14,6 @@ class ThemeProvider with ChangeNotifier {
   }
 
   ThemeData get themeData => themeDataCurrent;
-
 
   set themeData(ThemeData themeData) {
     themeDataCurrent = themeData;

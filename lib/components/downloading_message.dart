@@ -18,8 +18,14 @@ void showError(context) {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("Подождите", style: TextStyle(fontSize: 18, color: Colors.white),),
-                      Text("Данные загружаются", style: TextStyle(fontSize: 14),)
+                      Text(
+                        "Подождите",
+                        style: TextStyle(fontSize: 18, color: Colors.white),
+                      ),
+                      Text(
+                        "Данные загружаются",
+                        style: TextStyle(fontSize: 14),
+                      )
                     ],
                   ),
                 ),

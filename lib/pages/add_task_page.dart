@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:eCalculator/components/more_menu.dart';
-import 'package:eCalculator/other/database_helper.dart';
-import 'package:eCalculator/other/task.dart';
+import 'package:ecalculator/components/more_menu.dart';
+import 'package:ecalculator/other/database_helper.dart';
+import 'package:ecalculator/other/task.dart';
 import 'package:intl/intl.dart';
 
 class AddTaskPage extends StatefulWidget {
@@ -21,7 +21,8 @@ class _AddTaskPageState extends State<AddTaskPage> {
 
   void checkFields(String? value) {
     bool condition = subjectController.text.isNotEmpty &&
-        taskController.text.isNotEmpty && dateInt != 0;
+        taskController.text.isNotEmpty &&
+        dateInt != 0;
     setState(() {
       if (condition) {
         isDisabled = false;
@@ -48,10 +49,12 @@ class _AddTaskPageState extends State<AddTaskPage> {
   }
 
   void goDatabase() async {
-    await DatabaseHelper.instance.add(
-        Task(subject: subjectController.text, info: taskController.text, time: dateInt)
-    );
+    await DatabaseHelper.instance.add(Task(
+        subject: subjectController.text,
+        info: taskController.text,
+        time: dateInt));
     widget.function([dateInt, subjectController.text, taskController.text]);
+    if (!mounted) return;
     Navigator.pop(context);
   }
 
@@ -101,14 +104,12 @@ class _AddTaskPageState extends State<AddTaskPage> {
                 color: Theme.of(context).textTheme.displayLarge?.color),
             decoration: InputDecoration(
                 border: OutlineInputBorder(
-                  borderSide:
-                  BorderSide(color: Theme.of(context).colorScheme.secondary),
+                  borderSide: BorderSide(
+                      color: Theme.of(context).colorScheme.secondary),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                prefixIcon: Icon(
-                  Icons.school,
-                  color: Theme.of(context).textTheme.displayLarge?.color
-                ),
+                prefixIcon: Icon(Icons.school,
+                    color: Theme.of(context).textTheme.displayLarge?.color),
                 hintText: "Предмет",
                 hintStyle: const TextStyle(
                     color: Colors.grey, fontWeight: FontWeight.w400),
@@ -134,7 +135,9 @@ class _AddTaskPageState extends State<AddTaskPage> {
                     Icons.date_range,
                     color: Theme.of(context).textTheme.displayLarge?.color,
                   ),
-                  const SizedBox(width: 5,),
+                  const SizedBox(
+                    width: 5,
+                  ),
                   Text(dateText.isEmpty ? "Выберите дату" : dateText,
                       style: TextStyle(
                           fontSize: 18,
@@ -157,8 +160,7 @@ class _AddTaskPageState extends State<AddTaskPage> {
           padding: const EdgeInsets.only(left: 20.0, top: 20.0, right: 20.0),
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height - 300
-            ),
+                maxHeight: MediaQuery.of(context).size.height - 300),
             child: TextField(
               onChanged: (value) => checkFields(value),
               controller: taskController,
@@ -166,14 +168,12 @@ class _AddTaskPageState extends State<AddTaskPage> {
                   color: Theme.of(context).textTheme.displayLarge?.color),
               decoration: InputDecoration(
                   border: OutlineInputBorder(
-                    borderSide:
-                    BorderSide(color: Theme.of(context).colorScheme.secondary),
+                    borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.secondary),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  prefixIcon: Icon(
-                      Icons.short_text,
-                      color: Theme.of(context).textTheme.displayLarge?.color
-                  ),
+                  prefixIcon: Icon(Icons.short_text,
+                      color: Theme.of(context).textTheme.displayLarge?.color),
                   hintText: "Текст задания",
                   hintStyle: const TextStyle(
                       color: Colors.grey, fontWeight: FontWeight.w400),
@@ -187,20 +187,23 @@ class _AddTaskPageState extends State<AddTaskPage> {
         GestureDetector(
           onTap: goDatabase,
           child: Padding(
-            padding: const EdgeInsets.only(top: 20, left: 75, right: 75, bottom: 20),
-            child: isDisabled ? null : Container(
-                height: 48,
-                decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.secondary,
-                    borderRadius: BorderRadius.circular(10.0)),
-                child: Center(
-                  child: Text(
-                    'Готово',
-                    style: TextStyle(
-                        fontSize: 18,
-                        color: Theme.of(context).colorScheme.primary),
-                  ),
-                )),
+            padding:
+                const EdgeInsets.only(top: 20, left: 75, right: 75, bottom: 20),
+            child: isDisabled
+                ? null
+                : Container(
+                    height: 48,
+                    decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.secondary,
+                        borderRadius: BorderRadius.circular(10.0)),
+                    child: Center(
+                      child: Text(
+                        'Готово',
+                        style: TextStyle(
+                            fontSize: 18,
+                            color: Theme.of(context).colorScheme.primary),
+                      ),
+                    )),
           ),
         ),
       ]),

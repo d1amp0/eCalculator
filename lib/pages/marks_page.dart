@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:eCalculator/components/error_message.dart';
-import 'package:eCalculator/components/more_menu.dart';
-import 'package:eCalculator/components/popover_button.dart';
-import 'package:eCalculator/pages/mark_page.dart';
-import 'package:eCalculator/server/functions.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ecalculator/components/error_message.dart';
+import 'package:ecalculator/components/more_menu.dart';
+import 'package:ecalculator/components/popover_button.dart';
+import 'package:ecalculator/pages/mark_page.dart';
+import 'package:ecalculator/server/functions.dart';
+import 'package:ecalculator/domain/academic_calendar.dart';
+import 'package:ecalculator/storage/settings_storage.dart';
 
 class MarksPage extends StatefulWidget {
   const MarksPage({super.key});
@@ -13,17 +14,18 @@ class MarksPage extends StatefulWidget {
   State<MarksPage> createState() => _MarksPageState();
 }
 
-class _MarksPageState extends State<MarksPage> with AutomaticKeepAliveClientMixin {
+class _MarksPageState extends State<MarksPage>
+    with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
   final yearController = TextEditingController(),
       periodController = TextEditingController();
-  bool isTable = false,
-      isDownloading = false;
+  bool isTable = false, isDownloading = false;
   Map<String, double> changeMarksMap = {};
   Map<String, List<List<dynamic>>> marksMap = {};
   late PopoverButton periodPopoverButton;
+  final settings = SettingsStorage();
 
   Color getColor(double value) {
     switch (value) {
@@ -39,23 +41,15 @@ class _MarksPageState extends State<MarksPage> with AutomaticKeepAliveClientMixi
   }
 
   void saveTime() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    prefs.setString("year", yearController.text);
-    prefs.setString("period", periodController.text);
+    await settings.writeString("year", yearController.text);
+    await settings.writeString("period", periodController.text);
   }
 
   Future<bool> openTime() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    try {
-      yearController.text = prefs.getString("year")!;
-    } on Exception {
-      yearController.text = "2025/2026";
-    }
-    try {
-      periodController.text = prefs.getString("period")!;
-    } on Exception {
-      periodController.text = "3 четверть";
-    }
+    yearController.text =
+        await settings.readString("year") ?? AcademicCalendar.currentYear();
+    periodController.text = await settings.readString("period") ??
+        AcademicCalendar.currentQuarter();
     return true;
   }
 
@@ -67,8 +61,10 @@ class _MarksPageState extends State<MarksPage> with AutomaticKeepAliveClientMixi
         isTable = false;
       });
       String period = await eild(yearController.text + periodController.text);
+      if (!mounted) return;
       if (period != "400") {
         marksMap = await getMarksMap(period);
+        if (!mounted) return;
         changeMarksMap = changeMarks(marksMap);
         setState(() {
           isTable = true;
@@ -101,44 +97,45 @@ class _MarksPageState extends State<MarksPage> with AutomaticKeepAliveClientMixi
     return Scaffold(
       body: SafeArea(
           child: Column(
+        children: [
+          const SizedBox(
+            height: 10,
+          ),
+          Row(
             children: [
               const SizedBox(
-                height: 10,
+                width: 10,
               ),
-              Row(
-                children: [
-                  const SizedBox(
-                    width: 10,
-                  ),
-                  SizedBox(
-                    width: 158,
-                    height: 48,
-                    child: PopoverButton(
-                      startText: 'Учебный год',
-                      controller: yearController,
-                      checkControllers: checkControllers,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 158,
-                    height: 48,
-                    child: periodPopoverButton,
-                  ),
-                  const Spacer(),
-                  MoreMenu(
-                      canLeave: true,
-                      popoverButton: periodPopoverButton,
-                  )
-                ],
+              SizedBox(
+                width: 158,
+                height: 48,
+                child: PopoverButton(
+                  startText: 'Учебный год',
+                  controller: yearController,
+                  checkControllers: checkControllers,
+                ),
               ),
-              const SizedBox(
-                height: 20,
+              const SizedBox(width: 10),
+              SizedBox(
+                width: 158,
+                height: 48,
+                child: periodPopoverButton,
               ),
-              Container(
-                height: isTable ? MediaQuery.of(context).size.height - 180 : 0,
-                child: isTable ? ListView(
-                    children: [DataTable(
+              const Spacer(),
+              MoreMenu(
+                canLeave: true,
+                popoverButton: periodPopoverButton,
+              )
+            ],
+          ),
+          const SizedBox(
+            height: 20,
+          ),
+          SizedBox(
+            height: isTable ? MediaQuery.of(context).size.height - 180 : 0,
+            child: isTable
+                ? ListView(children: [
+                    DataTable(
                       columns: const [
                         DataColumn(label: Text('Предмет')),
                         DataColumn(label: Text('Балл')),
@@ -146,80 +143,73 @@ class _MarksPageState extends State<MarksPage> with AutomaticKeepAliveClientMixi
                       ],
                       rows: isTable
                           ? [
-                        for (var elem in changeMarksMap.entries)
-                          DataRow(cells: [
-                            DataCell(Text(
-                              elem.key,
-                              style: TextStyle(
-                                  fontSize: 16,
-                                  color: Theme
-                                      .of(context)
-                                      .textTheme
-                                      .displayLarge
-                                      ?.color),
-                            )),
-                            DataCell(Text(
-                              elem.value.toString(),
-                              style: TextStyle(
-                                  fontSize: 16, color: getColor(elem.value)),
-                            )),
-                            DataCell(IconButton(
-                                onPressed: () =>
-                                {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          MarkPage(
-                                            name: elem.key,
-                                            markList: marksMap[elem.key],
-                                          ),
-                                    ),
-                                  )
-                                },
-                                icon: Icon(
-                                  Icons.arrow_right_alt,
-                                  size: 35,
-                                  color: Theme
-                                      .of(context)
-                                      .textTheme
-                                      .displayLarge
-                                      ?.color,
-                                ))),
-                          ])
-                      ]
+                              for (var elem in changeMarksMap.entries)
+                                DataRow(cells: [
+                                  DataCell(Text(
+                                    elem.key,
+                                    style: TextStyle(
+                                        fontSize: 16,
+                                        color: Theme.of(context)
+                                            .textTheme
+                                            .displayLarge
+                                            ?.color),
+                                  )),
+                                  DataCell(Text(
+                                    elem.value.toString(),
+                                    style: TextStyle(
+                                        fontSize: 16,
+                                        color: getColor(elem.value)),
+                                  )),
+                                  DataCell(IconButton(
+                                      onPressed: () => {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) => MarkPage(
+                                                  name: elem.key,
+                                                  markList: marksMap[elem.key],
+                                                ),
+                                              ),
+                                            )
+                                          },
+                                      icon: Icon(
+                                        Icons.arrow_right_alt,
+                                        size: 35,
+                                        color: Theme.of(context)
+                                            .textTheme
+                                            .displayLarge
+                                            ?.color,
+                                      ))),
+                                ])
+                            ]
                           : [],
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(20),
                         shape: BoxShape.rectangle,
-                        color: Theme
-                            .of(context)
-                            .colorScheme
-                            .secondary,
+                        color: Theme.of(context).colorScheme.secondary,
                       ),
                       headingTextStyle: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: Theme
-                              .of(context)
-                              .textTheme
-                              .displayLarge
-                              ?.color),
-                    ),]
-                ) : null,
-              ),
-              SizedBox(height: isDownloading ? 300 : 0,),
-              Center(
-                child: isDownloading ? CircularProgressIndicator(
-                  backgroundColor: Colors.blue,
-                  color: Theme
-                      .of(context)
-                      .colorScheme
-                      .secondary,
-                ) : null,
-              ),
-            ],
-          )),
+                          color:
+                              Theme.of(context).textTheme.displayLarge?.color),
+                    ),
+                  ])
+                : null,
+          ),
+          SizedBox(
+            height: isDownloading ? 300 : 0,
+          ),
+          Center(
+            child: isDownloading
+                ? CircularProgressIndicator(
+                    backgroundColor: Colors.blue,
+                    color: Theme.of(context).colorScheme.secondary,
+                  )
+                : null,
+          ),
+        ],
+      )),
     );
   }
 }

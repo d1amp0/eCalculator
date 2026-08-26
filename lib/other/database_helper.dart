@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:eCalculator/other/task.dart';
+import 'package:ecalculator/other/task.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -38,8 +38,8 @@ class DatabaseHelper {
   Future<List<Task>> getTasks() async {
     Database db = await instance.database;
     var tasks = await db.query('tasks', orderBy: 'subject');
-    List<Task> tasksList = tasks.isNotEmpty ? tasks.map((c) => Task.fromMap(c))
-        .toList() : [];
+    List<Task> tasksList =
+        tasks.isNotEmpty ? tasks.map((c) => Task.fromMap(c)).toList() : [];
     return tasksList;
   }
 

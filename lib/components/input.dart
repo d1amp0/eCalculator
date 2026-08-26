@@ -26,7 +26,8 @@ class _MyInputState extends State<MyInput> {
         child: TextField(
           onChanged: (value) => widget.onChanged(value),
           controller: widget.controller,
-          style: TextStyle(color: Theme.of(context).textTheme.displayLarge?.color),
+          style:
+              TextStyle(color: Theme.of(context).textTheme.displayLarge?.color),
           obscureText: widget.hint == 'Логин' ? false : isVisible,
           decoration: InputDecoration(
               enabledBorder: OutlineInputBorder(
@@ -34,7 +35,8 @@ class _MyInputState extends State<MyInput> {
                 borderRadius: BorderRadius.circular(10),
               ),
               focusedBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
+                borderSide:
+                    BorderSide(color: Theme.of(context).colorScheme.primary),
                 borderRadius: BorderRadius.circular(10),
               ),
               prefixIcon: Icon(
@@ -54,7 +56,8 @@ class _MyInputState extends State<MyInput> {
                         });
                       },
                       icon: visibility,
-                      color: Theme.of(context).colorScheme.primary,)
+                      color: Theme.of(context).colorScheme.primary,
+                    )
                   : null,
               hintText: widget.hint,
               hintStyle: const TextStyle(

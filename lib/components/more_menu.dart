@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:eCalculator/components/popover_button.dart';
-import 'package:eCalculator/components/popup_menu.dart';
+import 'package:ecalculator/components/popover_button.dart';
+import 'package:ecalculator/components/popup_menu.dart';
 
 class MoreMenu extends StatefulWidget {
   final bool canLeave;
@@ -40,7 +40,8 @@ class _MoreMenuState extends State<MoreMenu> {
                       children: [
                         GestureDetector(
                           onTap: () {
-                            Navigator.of(context).popUntil((route) => route.isFirst);
+                            Navigator.of(context)
+                                .popUntil((route) => route.isFirst);
                           },
                           child: Text('Выйти',
                               style: TextStyle(

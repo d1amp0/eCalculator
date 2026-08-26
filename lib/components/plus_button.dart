@@ -1,6 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ecalculator/storage/settings_storage.dart';
 
 class PlusButton extends StatefulWidget {
   final Function getScore;
@@ -48,12 +48,9 @@ class _PlusButtonState extends State<PlusButton> {
   }
 
   void getPM() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    bool? mark = prefs.getBool("mark_type");
+    bool? mark = await SettingsStorage().readBool("mark_type");
     mark != null ? withPM = mark : withPM = false;
-    setState(() {
-      withPM;
-    });
+    if (mounted) setState(() {});
   }
 
   @override
@@ -70,7 +67,7 @@ class _PlusButtonState extends State<PlusButton> {
         scoreNew = score;
         coefficient = widget.getCoefficient();
         coefficientNew = coefficient;
-        List<double> waiting = await showDialog(
+        await showDialog<List<double>>(
             context: context,
             barrierDismissible: false,
             builder: (context) => StatefulBuilder(builder: (context, setState) {
@@ -151,15 +148,17 @@ class _PlusButtonState extends State<PlusButton> {
                               ),
                             )),
                         Center(
-                          child: withPM ? Text(
-                            "Какой знак?",
-                            style: TextStyle(
-                                color: Theme.of(context)
-                                    .textTheme
-                                    .displayLarge
-                                    ?.color,
-                                fontSize: 18),
-                          ) : null,
+                          child: withPM
+                              ? Text(
+                                  "Какой знак?",
+                                  style: TextStyle(
+                                      color: Theme.of(context)
+                                          .textTheme
+                                          .displayLarge
+                                          ?.color,
+                                      fontSize: 18),
+                                )
+                              : null,
                         ),
                         Center(
                           child: withPM
@@ -230,10 +229,12 @@ class _PlusButtonState extends State<PlusButton> {
                                         double.parse(mainCoefficient.text);
                                 if (withPM) {
                                   if (markSliding == 1) {
-                                    scoreNew += 0.2 * double.parse(mainCoefficient.text);
+                                    scoreNew += 0.2 *
+                                        double.parse(mainCoefficient.text);
                                   }
                                   if (markSliding == 2) {
-                                    scoreNew -= 0.2 * double.parse(mainCoefficient.text);
+                                    scoreNew -= 0.2 *
+                                        double.parse(mainCoefficient.text);
                                   }
                                 }
                                 coefficientNew = coefficient +
@@ -345,11 +346,8 @@ class _PlusButtonState extends State<PlusButton> {
           widget.update(scoreNew.toString(), coefficientNew.toString());
         }
       },
-      child: Icon(
-        Icons.add,
-        size: 50,
-        color: Theme.of(context).textTheme.displayLarge?.color
-      ),
+      child: Icon(Icons.add,
+          size: 50, color: Theme.of(context).textTheme.displayLarge?.color),
     );
   }
 }

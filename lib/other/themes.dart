@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:eCalculator/other/colors.dart' as colors;
+import 'package:ecalculator/other/colors.dart' as colors;
 
 ThemeData defaultMode = ThemeData(
     scaffoldBackgroundColor: colors.defaultPrimary,
@@ -15,9 +15,10 @@ ThemeData defaultMode = ThemeData(
         surface: Colors.white,
         onSurface: Colors.black),
     textTheme: const TextTheme(
-        displaySmall: TextStyle(color: Colors.white),
-        displayMedium: TextStyle(color: Colors.black),
-        displayLarge: TextStyle(color: Colors.black),));
+      displaySmall: TextStyle(color: Colors.white),
+      displayMedium: TextStyle(color: Colors.black),
+      displayLarge: TextStyle(color: Colors.black),
+    ));
 
 ThemeData lightMode = ThemeData(
     scaffoldBackgroundColor: colors.lightPrimary,
@@ -30,7 +31,8 @@ ThemeData lightMode = ThemeData(
     textTheme: const TextTheme(
       displaySmall: TextStyle(color: Colors.black),
       displayMedium: TextStyle(color: Colors.white),
-      displayLarge: TextStyle(color: Colors.black),));
+      displayLarge: TextStyle(color: Colors.black),
+    ));
 
 ThemeData darkMode = ThemeData(
     scaffoldBackgroundColor: colors.blackPrimary,
@@ -43,4 +45,5 @@ ThemeData darkMode = ThemeData(
     textTheme: const TextTheme(
       displaySmall: TextStyle(color: Colors.white),
       displayMedium: TextStyle(color: Colors.white),
-      displayLarge: TextStyle(color: Colors.white),));
+      displayLarge: TextStyle(color: Colors.white),
+    ));

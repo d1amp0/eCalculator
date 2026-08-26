@@ -2,11 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
-import 'package:eCalculator/components/more_menu.dart';
-import 'package:eCalculator/other/database_helper.dart';
-import 'package:eCalculator/pages/add_task_page.dart';
-import 'package:eCalculator/pages/task_page.dart';
-import 'package:eCalculator/server/functions.dart';
+import 'package:ecalculator/components/more_menu.dart';
+import 'package:ecalculator/other/database_helper.dart';
+import 'package:ecalculator/pages/add_task_page.dart';
+import 'package:ecalculator/pages/task_page.dart';
+import 'package:ecalculator/server/functions.dart';
 import 'package:intl/intl.dart';
 
 class HomeworkPage extends StatefulWidget {
@@ -132,8 +132,7 @@ class _HomeworkPageState extends State<HomeworkPage> {
     for (var task in tasks) {
       if (task.time <
           DateTime.now().millisecondsSinceEpoch - 7 * 24 * 60 * 60 * 1000) {
-        print(task.id);
-        DatabaseHelper.instance.remove(task.info);
+        await DatabaseHelper.instance.remove(task.info);
       } else {
         rawHomeworks.add([0000000, task.subject, task.time, task.info, true]);
       }
@@ -267,19 +266,20 @@ class _HomeworkPageState extends State<HomeworkPage> {
                                                 padding: const EdgeInsets.only(
                                                     right: 10, left: 10),
                                                 child: Text(
-                                                  homeworks[dates[indexDate]]![
-                                                          index][0]
-                                                      .toString(),
-                                                  style: TextStyle(
-                                                    fontSize: 24,
-                                                    color: Theme.of(context)
-                                                        .textTheme
-                                                        .displayLarge
-                                                        ?.color,
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis
-                                                ),
+                                                    homeworks[dates[
+                                                                indexDate]]![
+                                                            index][0]
+                                                        .toString(),
+                                                    style: TextStyle(
+                                                      fontSize: 24,
+                                                      color: Theme.of(context)
+                                                          .textTheme
+                                                          .displayLarge
+                                                          ?.color,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis),
                                               ),
                                               Padding(
                                                 padding: const EdgeInsets.only(
@@ -287,8 +287,8 @@ class _HomeworkPageState extends State<HomeworkPage> {
                                                 child: SizedBox(
                                                   height: 54,
                                                   child: HtmlWidget(
-                                                    homeworks[dates[indexDate]]![
-                                                        index][2],
+                                                    homeworks[dates[
+                                                        indexDate]]![index][2],
                                                     textStyle: TextStyle(
                                                       fontSize: 12,
                                                       color: Theme.of(context)

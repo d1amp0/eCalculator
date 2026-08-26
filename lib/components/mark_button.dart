@@ -60,7 +60,6 @@ class _MarkButtonState extends State<MarkButton> {
         scoreNew = score;
         coefficient = widget.getCoefficient();
         coefficientNew = coefficient;
-        print(colorMode);
         List<String> finish = await showDialog(
             barrierDismissible: false,
             context: context,
@@ -157,8 +156,10 @@ class _MarkButtonState extends State<MarkButton> {
                             setState(() {
                               double value = 0.0;
                               if (modeSliding == 0) {
-                                scoreNew = score - widget.markList[0] * widget.markList[1];
-                                coefficientNew = coefficient - widget.markList[1];
+                                scoreNew = score -
+                                    widget.markList[0] * widget.markList[1];
+                                coefficientNew =
+                                    coefficient - widget.markList[1];
                                 value =
                                     (scoreNew / coefficientNew * 100).round() /
                                         100;
@@ -169,12 +170,13 @@ class _MarkButtonState extends State<MarkButton> {
                               } else {
                                 if (check()) {
                                   scoreNew = score -
-                                      widget.markList[0] *
-                                          widget.markList[1] +
+                                      widget.markList[0] * widget.markList[1] +
                                       double.parse(main.text) *
                                           widget.markList[1];
                                   coefficientNew = coefficient;
-                                  value = (scoreNew / coefficientNew * 100).round() / 100;
+                                  value = (scoreNew / coefficientNew * 100)
+                                          .round() /
+                                      100;
                                   resultScore =
                                       "${(score / coefficient * 100).round() / 100}   →   $value";
                                   isDisabled = true;
@@ -272,7 +274,8 @@ class _MarkButtonState extends State<MarkButton> {
                                 if (colorMode == 0) {
                                   selfClear();
                                 }
-                                Navigator.pop(context, [score.toString(), coefficient.toString()]);
+                                Navigator.pop(context,
+                                    [score.toString(), coefficient.toString()]);
                               },
                               child: Text(
                                 "Отмена",
@@ -298,7 +301,17 @@ class _MarkButtonState extends State<MarkButton> {
                                         "${widget.markList[0].round()}→${main.text}";
                                   }
                                 }
-                                Navigator.pop(context, isPressed ? [scoreNew.toString(), coefficientNew.toString()] : [score.toString(), coefficient.toString()]);
+                                Navigator.pop(
+                                    context,
+                                    isPressed
+                                        ? [
+                                            scoreNew.toString(),
+                                            coefficientNew.toString()
+                                          ]
+                                        : [
+                                            score.toString(),
+                                            coefficient.toString()
+                                          ]);
                               },
                               child: Text(
                                 "Ок",
@@ -318,7 +331,6 @@ class _MarkButtonState extends State<MarkButton> {
                     insetPadding: const EdgeInsets.symmetric(vertical: 70),
                   );
                 }));
-        print(colorMode);
         setState(() {
           colorMode;
           widget.update(finish[0], finish[1]);
@@ -327,7 +339,9 @@ class _MarkButtonState extends State<MarkButton> {
       child: Column(
         children: [
           Text(
-            colorMode == 2 && isPressed ? changedValue : "${widget.markList[0].round()}${markSign(widget.markList[0])}",
+            colorMode == 2 && isPressed
+                ? changedValue
+                : "${widget.markList[0].round()}${markSign(widget.markList[0])}",
             style: TextStyle(
                 fontSize: 36,
                 color: colorMode == 0

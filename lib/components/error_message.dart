@@ -14,13 +14,23 @@ void showErrorLogin(context) {
                 borderRadius: BorderRadius.all(Radius.circular(20))),
             child: const Row(
               children: [
-                Icon(Icons.lock_rounded, color: Colors.white, size: 48,),
+                Icon(
+                  Icons.lock_rounded,
+                  color: Colors.white,
+                  size: 48,
+                ),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("Ошибка!", style: TextStyle(fontSize: 18, color: Colors.white),),
-                      Text("Неверный логин или пароль", style: TextStyle(fontSize: 14),)
+                      Text(
+                        "Ошибка!",
+                        style: TextStyle(fontSize: 18, color: Colors.white),
+                      ),
+                      Text(
+                        "Неверный логин или пароль",
+                        style: TextStyle(fontSize: 14),
+                      )
                     ],
                   ),
                 ),
@@ -36,7 +46,6 @@ void showErrorLogin(context) {
   ));
 }
 
-
 void showErrorPeriod(context) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
     content: Center(
@@ -51,13 +60,23 @@ void showErrorPeriod(context) {
                 borderRadius: BorderRadius.all(Radius.circular(20))),
             child: const Row(
               children: [
-                Icon(Icons.error_outline_sharp, color: Colors.white, size: 48,),
+                Icon(
+                  Icons.error_outline_sharp,
+                  color: Colors.white,
+                  size: 48,
+                ),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("Ошибка!", style: TextStyle(fontSize: 18, color: Colors.white),),
-                      Text("Учебный период/учебный год не найден", style: TextStyle(fontSize: 14),)
+                      Text(
+                        "Ошибка!",
+                        style: TextStyle(fontSize: 18, color: Colors.white),
+                      ),
+                      Text(
+                        "Учебный период/учебный год не найден",
+                        style: TextStyle(fontSize: 14),
+                      )
                     ],
                   ),
                 ),
