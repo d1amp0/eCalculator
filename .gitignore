@@ -41,3 +41,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Android/Gradle/CMake generated output
+**/.cxx/
+**/.externalNativeBuild/
+**/.gradle/
+android/local.properties
+android/key.properties
+*.jks
+*.keystore
