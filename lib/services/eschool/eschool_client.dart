@@ -46,9 +46,9 @@ class EschoolClient {
     );
   }
 
-  Future<bool> authenticate() async {
+  Future<AuthenticationResult> authenticate() async {
     final credential = credentialHash;
-    if (credential == null) return false;
+    if (credential == null) return AuthenticationResult.invalidCredentials;
 
     final response = await _httpClient.post(
       Uri.parse('$_baseUrl/login'),
@@ -69,14 +69,28 @@ class EschoolClient {
       },
     );
 
-    if (response.statusCode != 200) return false;
+    if (response.statusCode != 200) {
+      return _loginResultForStatus(response.statusCode);
+    }
     _updateCookies(response);
 
     final stateResponse = await _rawGet(Uri.parse('$_baseUrl/state'));
-    if (stateResponse.statusCode != 200) return false;
+    if (stateResponse.statusCode == 401) {
+      return AuthenticationResult.invalidCredentials;
+    }
+    if (stateResponse.statusCode == 403) {
+      return AuthenticationResult.forbidden;
+    }
+    if (stateResponse.statusCode == 429) {
+      return AuthenticationResult.rateLimited;
+    }
+    if (stateResponse.statusCode != 200) {
+      return AuthenticationResult.unavailable;
+    }
     _updateUserId(stateResponse);
+    if (userId == null) return AuthenticationResult.unavailable;
     await onSessionChanged?.call();
-    return userId != null;
+    return AuthenticationResult.authenticated;
   }
 
   /// Checks a restored cookie without sending the reusable credential.
@@ -132,7 +146,8 @@ class EschoolClient {
       '$_baseUrl/$prefix/$method${urlData.isNotEmpty ? '?$urlData' : ''}',
     );
     var response = await _rawPut(url, data);
-    if (response.statusCode == 401 && await authenticate()) {
+    if (response.statusCode == 401 &&
+        await authenticate() == AuthenticationResult.authenticated) {
       response = await _rawPut(url, data);
     }
     return _decodeMap(response);
@@ -155,16 +170,20 @@ class EschoolClient {
 
     final periodResult = (await get('getDiaryPeriod'))['result'] ?? const [];
     return periodResult
-        .where((lesson) =>
-            lesson is Map<String, dynamic> && lesson.containsKey('markVal'))
-        .map((lesson) => [
-              lesson['markVal'],
-              lesson['mktWt'] ?? 1,
-              lesson['startDt'],
-              lesson['lessonId'],
-              lesson['lptName'],
-              units[lesson['unitId']],
-            ])
+        .where(
+          (lesson) =>
+              lesson is Map<String, dynamic> && lesson.containsKey('markVal'),
+        )
+        .map(
+          (lesson) => [
+            lesson['markVal'],
+            lesson['mktWt'] ?? 1,
+            lesson['startDt'],
+            lesson['lessonId'],
+            lesson['lptName'],
+            units[lesson['unitId']],
+          ],
+        )
         .toList();
   }
 
@@ -180,15 +199,19 @@ class EschoolClient {
 
     final periodResult = (await get('getDiaryPeriod'))['result'] ?? const [];
     return periodResult
-        .where((lesson) =>
-            lesson is Map<String, dynamic> &&
-            MarkCalculator.parse(lesson['markVal']?.toString() ?? '') != null)
-        .map((lesson) => [
-              MarkCalculator.parse(lesson['markVal'].toString()),
-              lesson['mktWt'] ?? 1,
-              units[lesson['unitId']],
-              lesson['startDt'],
-            ])
+        .where(
+          (lesson) =>
+              lesson is Map<String, dynamic> &&
+              MarkCalculator.parse(lesson['markVal']?.toString() ?? '') != null,
+        )
+        .map(
+          (lesson) => [
+            MarkCalculator.parse(lesson['markVal'].toString()),
+            lesson['mktWt'] ?? 1,
+            units[lesson['unitId']],
+            lesson['startDt'],
+          ],
+        )
         .toList();
   }
 
@@ -211,9 +234,8 @@ class EschoolClient {
     final years = <String>{};
     for (final item in await _classesForUser()) {
       if (item is! Map<String, dynamic>) continue;
-      final match = RegExp(r'(\d{4})').firstMatch(
-        item['begDateStr']?.toString() ?? '',
-      );
+      final match =
+          RegExp(r'(\d{4})').firstMatch(item['begDateStr']?.toString() ?? '');
       if (match == null) continue;
       final start = int.parse(match.group(1)!);
       years.add('$start/${start + 1}');
@@ -257,11 +279,13 @@ class EschoolClient {
     final currentTime = DateTime.now().millisecondsSinceEpoch;
     final startDate = d1 ?? currentTime - 48 * 3600 * 1000;
     final endDate = d2 ?? startDate + 14 * 24 * 3600 * 1000;
-    final url = Uri.parse('$_baseUrl/student/diary').replace(queryParameters: {
-      'userId': userId.toString(),
-      'd1': startDate.toString(),
-      'd2': endDate.toString(),
-    });
+    final url = Uri.parse('$_baseUrl/student/diary').replace(
+      queryParameters: {
+        'userId': userId.toString(),
+        'd1': startDate.toString(),
+        'd2': endDate.toString(),
+      },
+    );
     final response = await _get(url);
     return List<Map<String, dynamic>>.from(
       jsonDecode(response.body)['lesson'] ?? const [],
@@ -306,7 +330,8 @@ class EschoolClient {
 
   Future<http.Response> _get(Uri url) async {
     var response = await _rawGet(url);
-    if (response.statusCode == 401 && await authenticate()) {
+    if (response.statusCode == 401 &&
+        await authenticate() == AuthenticationResult.authenticated) {
       response = await _rawGet(url);
     }
     return response;
@@ -370,6 +395,24 @@ class EschoolRequestException implements Exception {
 }
 
 enum SessionValidation { valid, unauthorized, unavailable }
+
+enum AuthenticationResult {
+  authenticated,
+  invalidCredentials,
+  forbidden,
+  rateLimited,
+  unavailable,
+}
+
+AuthenticationResult _loginResultForStatus(int statusCode) {
+  if (statusCode == 403) return AuthenticationResult.forbidden;
+  if (statusCode == 429) return AuthenticationResult.rateLimited;
+  if (statusCode >= 500) return AuthenticationResult.unavailable;
+  if (statusCode == 400 || statusCode == 401 || statusCode == 422) {
+    return AuthenticationResult.invalidCredentials;
+  }
+  return AuthenticationResult.unavailable;
+}
 
 String _randomString(int length) {
   final random = Random.secure();

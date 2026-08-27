@@ -8,17 +8,38 @@ enum LoginResult {
   authenticated,
   authenticatedWithoutPersistence,
   invalidCredentials,
+  unavailable,
+  forbidden,
+  rateLimited,
 }
+
+typedef EschoolClientFactory = EschoolClient Function({
+  required String username,
+  required String password,
+});
+
+typedef RestoredEschoolClientFactory = EschoolClient Function({
+  required String username,
+  required String? credentialHash,
+  required Map<String, String> cookies,
+  required int? userId,
+});
 
 class EschoolSession {
   EschoolSession({
     AuthStorage? authStorage,
     SettingsStorage? settingsStorage,
+    EschoolClientFactory? clientFactory,
+    RestoredEschoolClientFactory? restoredClientFactory,
   })  : _authStorage = authStorage ?? SecureAuthStorage(),
-        _settingsStorage = settingsStorage ?? SettingsStorage();
+        _settingsStorage = settingsStorage ?? SettingsStorage(),
+        _clientFactory = clientFactory ?? EschoolClient.fromPassword,
+        _restoredClientFactory = restoredClientFactory ?? _createRestoredClient;
 
   final AuthStorage _authStorage;
   final SettingsStorage _settingsStorage;
+  final EschoolClientFactory _clientFactory;
+  final RestoredEschoolClientFactory _restoredClientFactory;
 
   EschoolClient? _client;
   bool _remembered = false;
@@ -44,7 +65,7 @@ class EschoolSession {
 
     try {
       final saved = json.decode(encoded) as Map<String, dynamic>;
-      final candidate = EschoolClient(
+      final candidate = _restoredClientFactory(
         username: saved['username'] as String,
         credentialHash: saved['credentialHash'] as String?,
         cookies: Map<String, String>.from(saved['cookies'] as Map),
@@ -52,15 +73,25 @@ class EschoolSession {
       );
       final validation = await candidate.validateSession();
       if (validation == SessionValidation.unavailable) return false;
-      if (validation == SessionValidation.unauthorized &&
-          !await candidate.authenticate()) {
-        return false;
+      if (validation == SessionValidation.unauthorized) {
+        final authentication = await candidate.authenticate();
+        if (authentication == AuthenticationResult.invalidCredentials) {
+          await _clearStoredSessionBestEffort();
+          return false;
+        }
+        if (authentication != AuthenticationResult.authenticated) return false;
       }
 
       _remembered = true;
       _client = candidate;
       candidate.onSessionChanged = _persistCurrentSession;
-      await _persistCurrentSession();
+      try {
+        await _persistCurrentSession();
+      } on Object {
+        // The restored session is already authenticated. Keep it in memory,
+        // but do not repeatedly attempt writes to an unavailable secure store.
+        _remembered = false;
+      }
       return true;
     } on FormatException {
       await _clearStoredSessionBestEffort();
@@ -78,16 +109,24 @@ class EschoolSession {
     required String password,
     required bool rememberMe,
   }) async {
-    final candidate = EschoolClient.fromPassword(
-      username: username,
-      password: password,
-    );
+    final candidate = _clientFactory(username: username, password: password);
+    final AuthenticationResult authentication;
     try {
-      if (!await candidate.authenticate()) {
-        return LoginResult.invalidCredentials;
-      }
+      authentication = await candidate.authenticate();
     } on Object {
-      return LoginResult.invalidCredentials;
+      return LoginResult.unavailable;
+    }
+    switch (authentication) {
+      case AuthenticationResult.invalidCredentials:
+        return LoginResult.invalidCredentials;
+      case AuthenticationResult.unavailable:
+        return LoginResult.unavailable;
+      case AuthenticationResult.forbidden:
+        return LoginResult.forbidden;
+      case AuthenticationResult.rateLimited:
+        return LoginResult.rateLimited;
+      case AuthenticationResult.authenticated:
+        break;
     }
 
     _client = candidate;
@@ -108,23 +147,29 @@ class EschoolSession {
   }
 
   Future<void> logout() async {
+    // Keep the in-memory session usable until every persistent authentication
+    // location has been cleared. A failed secure-store operation can then be
+    // retried without pretending that logout succeeded.
+    await _authStorage.clear();
+    await _settingsStorage.removeLegacyAuthData();
+
     final oldClient = _client;
     _client = null;
     _remembered = false;
     oldClient?.clearSession();
-    await _authStorage.clear();
-    await _removeLegacyAuthentication();
   }
 
   Future<void> _persistCurrentSession() async {
     if (!_remembered || _client == null) return;
     final current = _client!;
-    await _authStorage.writeSession(json.encode({
-      'username': current.username,
-      'credentialHash': current.credentialHash,
-      'cookies': current.cookies,
-      'userId': current.userId,
-    }));
+    await _authStorage.writeSession(
+      json.encode({
+        'username': current.username,
+        'credentialHash': current.credentialHash,
+        'cookies': current.cookies,
+        'userId': current.userId,
+      }),
+    );
   }
 
   Future<void> _removeLegacyAuthentication() async {
@@ -142,6 +187,20 @@ class EschoolSession {
       // An inaccessible secure store cannot be replaced by insecure storage.
     }
   }
+}
+
+EschoolClient _createRestoredClient({
+  required String username,
+  required String? credentialHash,
+  required Map<String, String> cookies,
+  required int? userId,
+}) {
+  return EschoolClient(
+    username: username,
+    credentialHash: credentialHash,
+    cookies: cookies,
+    userId: userId,
+  );
 }
 
 final eschoolSession = EschoolSession();
