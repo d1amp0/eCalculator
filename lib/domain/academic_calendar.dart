@@ -16,7 +16,7 @@ class AcademicCalendar {
     );
   }
 
-  static String currentQuarter({DateTime? now}) {
+  static String? currentQuarter({DateTime? now}) {
     final month = (now ?? DateTime.now()).month;
     if (month == DateTime.september || month == DateTime.october) {
       return '1 четверть';
@@ -27,6 +27,9 @@ class AcademicCalendar {
     if (month >= DateTime.january && month <= DateTime.march) {
       return '3 четверть';
     }
-    return '4 четверть';
+    if (month == DateTime.april || month == DateTime.may) {
+      return '4 четверть';
+    }
+    return null;
   }
 }

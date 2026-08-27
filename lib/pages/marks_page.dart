@@ -49,7 +49,8 @@ class _MarksPageState extends State<MarksPage>
     yearController.text =
         await settings.readString("year") ?? AcademicCalendar.currentYear();
     periodController.text = await settings.readString("period") ??
-        AcademicCalendar.currentQuarter();
+        AcademicCalendar.currentQuarter() ??
+        '';
     return true;
   }
 
@@ -96,120 +97,122 @@ class _MarksPageState extends State<MarksPage>
     super.build(context);
     return Scaffold(
       body: SafeArea(
-          child: Column(
-        children: [
-          const SizedBox(
-            height: 10,
-          ),
-          Row(
-            children: [
-              const SizedBox(
-                width: 10,
-              ),
-              SizedBox(
-                width: 158,
-                height: 48,
-                child: PopoverButton(
-                  startText: 'Учебный год',
-                  controller: yearController,
-                  checkControllers: checkControllers,
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 158,
+                  height: 48,
+                  child: PopoverButton(
+                    startText: 'Учебный год',
+                    controller: yearController,
+                    checkControllers: checkControllers,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              SizedBox(
-                width: 158,
-                height: 48,
-                child: periodPopoverButton,
-              ),
-              const Spacer(),
-              MoreMenu(
-                canLeave: true,
-                popoverButton: periodPopoverButton,
-              )
-            ],
-          ),
-          const SizedBox(
-            height: 20,
-          ),
-          SizedBox(
-            height: isTable ? MediaQuery.of(context).size.height - 180 : 0,
-            child: isTable
-                ? ListView(children: [
-                    DataTable(
-                      columns: const [
-                        DataColumn(label: Text('Предмет')),
-                        DataColumn(label: Text('Балл')),
-                        DataColumn(label: Text('Перейти'))
-                      ],
-                      rows: isTable
-                          ? [
-                              for (var elem in changeMarksMap.entries)
-                                DataRow(cells: [
-                                  DataCell(Text(
-                                    elem.key,
-                                    style: TextStyle(
-                                        fontSize: 16,
-                                        color: Theme.of(context)
-                                            .textTheme
-                                            .displayLarge
-                                            ?.color),
-                                  )),
-                                  DataCell(Text(
-                                    elem.value.toString(),
-                                    style: TextStyle(
-                                        fontSize: 16,
-                                        color: getColor(elem.value)),
-                                  )),
-                                  DataCell(IconButton(
-                                      onPressed: () => {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) => MarkPage(
-                                                  name: elem.key,
-                                                  markList: marksMap[elem.key],
+                const SizedBox(width: 10),
+                SizedBox(width: 158, height: 48, child: periodPopoverButton),
+                const Spacer(),
+                MoreMenu(canLeave: true, popoverButton: periodPopoverButton),
+              ],
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              height: isTable ? MediaQuery.of(context).size.height - 180 : 0,
+              child: isTable
+                  ? ListView(
+                      children: [
+                        DataTable(
+                          columns: const [
+                            DataColumn(label: Text('Предмет')),
+                            DataColumn(label: Text('Балл')),
+                            DataColumn(label: Text('Перейти')),
+                          ],
+                          rows: isTable
+                              ? [
+                                  for (var elem in changeMarksMap.entries)
+                                    DataRow(
+                                      cells: [
+                                        DataCell(
+                                          Text(
+                                            elem.key,
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              color: Theme.of(context)
+                                                  .textTheme
+                                                  .displayLarge
+                                                  ?.color,
+                                            ),
+                                          ),
+                                        ),
+                                        DataCell(
+                                          Text(
+                                            elem.value.toString(),
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              color: getColor(elem.value),
+                                            ),
+                                          ),
+                                        ),
+                                        DataCell(
+                                          IconButton(
+                                            onPressed: () => {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) =>
+                                                      MarkPage(
+                                                    name: elem.key,
+                                                    markList:
+                                                        marksMap[elem.key],
+                                                  ),
                                                 ),
                                               ),
-                                            )
-                                          },
-                                      icon: Icon(
-                                        Icons.arrow_right_alt,
-                                        size: 35,
-                                        color: Theme.of(context)
-                                            .textTheme
-                                            .displayLarge
-                                            ?.color,
-                                      ))),
-                                ])
-                            ]
-                          : [],
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        shape: BoxShape.rectangle,
-                        color: Theme.of(context).colorScheme.secondary,
-                      ),
-                      headingTextStyle: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color:
-                              Theme.of(context).textTheme.displayLarge?.color),
-                    ),
-                  ])
-                : null,
-          ),
-          SizedBox(
-            height: isDownloading ? 300 : 0,
-          ),
-          Center(
-            child: isDownloading
-                ? CircularProgressIndicator(
-                    backgroundColor: Colors.blue,
-                    color: Theme.of(context).colorScheme.secondary,
-                  )
-                : null,
-          ),
-        ],
-      )),
+                                            },
+                                            icon: Icon(
+                                              Icons.arrow_right_alt,
+                                              size: 35,
+                                              color: Theme.of(context)
+                                                  .textTheme
+                                                  .displayLarge
+                                                  ?.color,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                ]
+                              : [],
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            shape: BoxShape.rectangle,
+                            color: Theme.of(context).colorScheme.secondary,
+                          ),
+                          headingTextStyle: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color:
+                                Theme.of(context).textTheme.displayLarge?.color,
+                          ),
+                        ),
+                      ],
+                    )
+                  : null,
+            ),
+            SizedBox(height: isDownloading ? 300 : 0),
+            Center(
+              child: isDownloading
+                  ? CircularProgressIndicator(
+                      backgroundColor: Colors.blue,
+                      color: Theme.of(context).colorScheme.secondary,
+                    )
+                  : null,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
