@@ -22,13 +22,14 @@ class MyIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-        onTap: () {
-          if (type == 0) {
-            _launchUrl();
-          } else {
-            saveMail();
-          }
-        },
-        child: Image.asset(path, width: 56, height: 56));
+      onTap: () {
+        if (type == 0) {
+          _launchUrl();
+        } else {
+          saveMail();
+        }
+      },
+      child: Image.asset(path, width: 56, height: 56),
+    );
   }
 }

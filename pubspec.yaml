@@ -1,5 +1,5 @@
-name: eCalculator
-description: "App for calculating eSchool marks."
+name: ecalculator
+description: "Unofficial eSchool companion for marks and homework."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -16,10 +16,11 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 4.0.0-dev.1+400001
 
 environment:
   sdk: ^3.5.3
+  flutter: '>=3.47.0'
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -40,6 +41,7 @@ dependencies:
   provider: 
   popover: ^0.2.8+2
   shared_preferences:
+  flutter_secure_storage: ^11.0.0
   url_launcher:
   http: ^1.2.2
   crypto:
@@ -47,7 +49,9 @@ dependencies:
   convert:
   path_provider:
   flutter_widget_from_html: ^0.15.3
-  intl: ^0.19.0
+  # Keep fwfh_chewie on an AGP-compatible release with an Android namespace.
+  chewie: ^1.10.0
+  intl: ^0.20.3
   sqflite:
   path:
   sqflite_common_ffi:

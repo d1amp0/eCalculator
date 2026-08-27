@@ -1,148 +1,110 @@
-# 📊 eCalculator
+# eCalculator
 
-**eCalculator** — мобильное приложение на Flutter для работы с электронным дневником **eSchool**. Оно помогает быстро считать средний балл и удобно работать с домашними заданиями.
+eCalculator is an unofficial Flutter application for students who use
+[eSchool](https://app.eschool.center/). It helps students review marks, analyse
+weighted averages, explore possible mark scenarios, and view homework.
 
-> ⚠️ Примечание: проект не связан с eSchool официально.
+> [!IMPORTANT]
+> eCalculator is not affiliated with, maintained by, or endorsed by eSchool.
 
----
+## Project status
 
-## ✨ Возможности
+Version 4 is in active preparation. This repository currently focuses on a
+safer authentication foundation, maintainable project structure, automated
+checks, and release readiness while preserving the existing interface.
 
-* 📈 **Калькулятор среднего балла** по предметам на основе оценок из eSchool.
-* 📝 **Домашние задания**: просмотр всех домашних из дневника + возможность **создавать свои**.
-* 🔎 Поиск/фильтрация по предметам и датам (если реализовано в UI).
-* 💾 Локальное сохранение данных (SQLite/SharedPreferences).
-* 🌐 Локализация интерфейса (intl + flutter\_localizations).
+## Features
 
----
+- View eSchool marks grouped by subject.
+- Calculate simple and weighted grade averages, including supported `+` and
+  `-` mark modifiers.
+- Explore mark scenarios without changing eSchool data.
+- View eSchool homework and manage locally created tasks.
+- Store theme, academic-period, and calculation preferences locally.
 
-## 🚀 Быстрый старт
+## Screenshots
 
-### Требования
+Screenshots for the v4 interface will be added before the stable release.
 
-* Flutter **>= 3.5.3** (см. `environment.sdk` в `pubspec.yaml`).
-* Dart SDK, Android Studio/Xcode по необходимости.
+## Supported platforms
 
-### Установка
+Android is the primary supported target. Flutter project scaffolding is also
+present for iOS, macOS, Linux, Windows, and web, but those targets are not yet
+part of the v4 release validation matrix.
 
-1. Клонируйте проект:
+## Install and build
 
-```bash
-git clone https://github.com/username/eCalculator.git
+Stable builds will be published on the
+[GitHub Releases](https://github.com/d1amp0/eCalculator/releases) page.
+
+To build the current source:
+
+```sh
+git clone https://github.com/d1amp0/eCalculator.git
 cd eCalculator
-```
-
-2. Установите зависимости:
-
-```bash
 flutter pub get
-```
-
-3. Запустите приложение на подключённом устройстве/эмуляторе:
-
-```bash
 flutter run
 ```
 
-> Если в `pubspec.yaml` сейчас имя пакета `hello`, переименуйте на `ecalculator` (или желаемое) перед публикацией.
+For an Android APK:
 
----
-
-## 🧩 Зависимости (из `pubspec.yaml`)
-
-* **state management:** `provider`
-* **UI/UX:** `popover`, `cupertino_icons`
-* **хранение:** `shared_preferences`, `sqflite`, `path_provider`, `path`, `sqlite3_flutter_libs`, `sqflite_common_ffi` (для desktop)
-* **сеть и парсинг:** `http`, `crypto`, `convert`, `charset_converter`
-* **контент:** `flutter_widget_from_html`
-* **локализация/форматирование:** `flutter_localizations`, `intl`
-* **deeplinks/URL:** `url_launcher`
-
-Полный список и версии смотрите в `pubspec.yaml`.
-
----
-
-## 🗂️ Структура проекта (рекомендация)
-
-```
-lib/
- ├─ images/              # ассеты (подключены в pubspec)
- ├─ pages/               # страницы
- ├─ other/               # разные функции
- ├─ server/              # серверные запросы
- ├─ components/          # переиспользуемые UI-компоненты
- └─ main.dart            # точка входа
-```
-
----
-
-## 📦 Сборка
-
-### Android
-
-```bash
+```sh
 flutter build apk --release
 ```
 
-Подпись и загрузка — через Play Console.
+Release signing is intentionally not configured in the repository.
 
-### iOS
+## Development
 
-```bash
-flutter build ios --release
+Use Flutter 3.47.0 stable with Dart 3.13.0 or newer. Before opening a pull
+request, run:
+
+```sh
+dart format --output=none --set-exit-if-changed .
+flutter analyze
+flutter test
+flutter build apk --debug
 ```
 
-Откройте проект в Xcode для настройки подписи и загрузки в App Store Connect.
+The automated CI workflow runs the same checks without requiring an eSchool
+account or repository secrets.
 
-### Web (опционально)
+## Security and privacy
 
-```bash
-flutter build web
-```
+Authentication requests are sent directly from the application to eSchool.
+The project does not intentionally send a user's eSchool password to an
+eCalculator-owned backend. eSchool's reusable derived authentication credential
+and persistent session information are stored through the operating system's
+secure storage. Non-sensitive preferences remain in SharedPreferences.
 
-Готовую папку `build/web` можно деплоить на любой хостинг статики.
+If “Remember me” is disabled, reusable authentication material is kept only in
+memory for the current app process. If secure storage is unavailable, the app
+does not fall back to storing credentials in SharedPreferences.
 
-### Desktop (опционально)
+No software can make an absolute security guarantee. Please report suspected
+vulnerabilities according to [SECURITY.md](SECURITY.md), and never include
+credentials, session cookies, or student data in a public issue.
 
-С учётом `sqflite_common_ffi` проект можно адаптировать под desktop. Проверьте инициализацию FFI для вашей ОС и поддержку нужных плагинов.
+Android v4 uses the application ID `com.d1amp0.ecalculator` and requires
+Android 7.0 (API 24) or newer. Older builds used `com.example.hello`; Android
+therefore treats v4 as a different application, so it cannot update those
+builds in place. Android Auto Backup is disabled to prevent secure-storage
+ciphertext from being restored without its device-bound key.
 
----
+## eSchool integration disclaimer
 
-## 🔐 Конфигурация и данные
+eCalculator depends on eSchool services at
+`https://app.eschool.center/ec-server`. Availability and compatibility can be
+affected by upstream changes. Users and contributors are responsible for
+following applicable school policies and eSchool terms.
 
-* Убедитесь, что соблюдаете политику и условия использования eSchool.
-* Конфиденциальные данные (логины/пароли) **не** храните в репозитории.
+## Contributing
 
----
+Practical contribution guidance is available in
+[CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and focused pull requests are
+welcome, but examples and fixtures must never contain real student data or
+authentication material.
 
-## 🐞 Отладка
+## License
 
-* Проверяйте логи:
-
-```bash
-flutter run -v
-```
-
-* Обновите зависимости:
-
-```bash
-flutter pub upgrade --major-versions
-```
-
-* Проверка устаревших пакетов:
-
-```bash
-flutter pub outdated
-```
-
----
-
-## 🤝 Вклад в проект
-
-PR-ы и Issues приветствуются. Пожалуйста, описывайте проблему и шаги для воспроизведения.
-
----
-
-## 📄 Лицензия
-
-MIT — используйте свободно, ответственность на пользователе.
+eCalculator is available under the [MIT License](LICENSE).

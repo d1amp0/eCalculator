@@ -3,10 +3,7 @@ import 'package:flutter/material.dart';
 class PopupMenu extends StatelessWidget {
   final List<PopupMenuEntry> menuList;
 
-  const PopupMenu({
-    super.key,
-    required this.menuList,
-  });
+  const PopupMenu({super.key, required this.menuList});
 
   @override
   Widget build(BuildContext context) {

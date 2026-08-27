@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:eCalculator/pages/homework_page.dart';
-import 'package:eCalculator/pages/marks_page.dart';
-import 'package:eCalculator/pages/settings_page.dart';
+import 'package:ecalculator/pages/homework_page.dart';
+import 'package:ecalculator/pages/marks_page.dart';
+import 'package:ecalculator/pages/settings_page.dart';
 
 class MainPage extends StatefulWidget {
   const MainPage({super.key});
@@ -30,10 +30,7 @@ class _MainPageState extends State<MainPage>
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
-      body: IndexedStack(
-        index: _pageIndex,
-        children: pageList,
-      ),
+      body: IndexedStack(index: _pageIndex, children: pageList),
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
           backgroundColor: Theme.of(context).colorScheme.secondary,

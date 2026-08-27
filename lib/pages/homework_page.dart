@@ -2,11 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
-import 'package:eCalculator/components/more_menu.dart';
-import 'package:eCalculator/other/database_helper.dart';
-import 'package:eCalculator/pages/add_task_page.dart';
-import 'package:eCalculator/pages/task_page.dart';
-import 'package:eCalculator/server/functions.dart';
+import 'package:ecalculator/components/more_menu.dart';
+import 'package:ecalculator/other/database_helper.dart';
+import 'package:ecalculator/pages/add_task_page.dart';
+import 'package:ecalculator/pages/task_page.dart';
+import 'package:ecalculator/server/functions.dart';
 import 'package:intl/intl.dart';
 
 class HomeworkPage extends StatefulWidget {
@@ -41,15 +41,15 @@ class _HomeworkPageState extends State<HomeworkPage> {
             elem[3] != null
                 ? extractText(utf8.decode(latin1.encode(elem[3])))
                 : '',
-            false
+            false,
           ]);
         }
       } else {
         if (elem[4]) {
           homeworksDate.addAll({
             elem[2]: [
-              [elem[1], elem[3], elem[3], true]
-            ]
+              [elem[1], elem[3], elem[3], true],
+            ],
           });
         } else {
           homeworksDate.addAll({
@@ -62,9 +62,9 @@ class _HomeworkPageState extends State<HomeworkPage> {
                 elem[3] != null
                     ? extractText(utf8.decode(latin1.encode(elem[3])))
                     : '',
-                false
-              ]
-            ]
+                false,
+              ],
+            ],
           });
         }
       }
@@ -91,8 +91,8 @@ class _HomeworkPageState extends State<HomeworkPage> {
       setState(() {
         homeworks.addAll({
           list[0]: [
-            [list[1], list[2], list[2], true]
-          ]
+            [list[1], list[2], list[2], true],
+          ],
         });
         refreshDates();
       });
@@ -132,8 +132,7 @@ class _HomeworkPageState extends State<HomeworkPage> {
     for (var task in tasks) {
       if (task.time <
           DateTime.now().millisecondsSinceEpoch - 7 * 24 * 60 * 60 * 1000) {
-        print(task.id);
-        DatabaseHelper.instance.remove(task.info);
+        await DatabaseHelper.instance.remove(task.info);
       } else {
         rawHomeworks.add([0000000, task.subject, task.time, task.info, true]);
       }
@@ -165,174 +164,176 @@ class _HomeworkPageState extends State<HomeworkPage> {
         },
         backgroundColor: Theme.of(context).colorScheme.secondary,
         foregroundColor: Theme.of(context).textTheme.displayLarge?.color,
-        child: const Icon(
-          Icons.add_task,
-          size: 30,
-        ),
+        child: const Icon(Icons.add_task, size: 30),
       ),
       body: SafeArea(
-          child: Column(
-        children: [
-          Row(
-            children: [
-              const Spacer(
-                flex: 3,
-              ),
-              Text(
-                "Задания",
-                style: TextStyle(
-                  color: Theme.of(context).textTheme.displaySmall?.color,
-                  fontSize: 32,
+        child: Column(
+          children: [
+            Row(
+              children: [
+                const Spacer(flex: 3),
+                Text(
+                  "Задания",
+                  style: TextStyle(
+                    color: Theme.of(context).textTheme.displaySmall?.color,
+                    fontSize: 32,
+                  ),
                 ),
-              ),
-              const Spacer(
-                flex: 2,
-              ),
-              const MoreMenu(canLeave: true)
-            ],
-          ),
-          const SizedBox(
-            height: 10,
-          ),
-          SizedBox(
-            height: MediaQuery.of(context).size.height - 180,
-            child: readyToBuild
-                ? ListView.builder(
-                    itemCount: dates.length,
-                    itemBuilder: (context, indexDate) {
-                      return Column(
-                        children: [
-                          Center(
+                const Spacer(flex: 2),
+                const MoreMenu(canLeave: true),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: MediaQuery.of(context).size.height - 180,
+              child: readyToBuild
+                  ? ListView.builder(
+                      itemCount: dates.length,
+                      itemBuilder: (context, indexDate) {
+                        return Column(
+                          children: [
+                            Center(
                               child: Container(
-                                  height: 25,
-                                  width: 85,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(10),
-                                    shape: BoxShape.rectangle,
-                                    color:
-                                        Theme.of(context).colorScheme.secondary,
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      DateFormat('dd.MM.yyyy')
-                                          .format(DateTime
-                                              .fromMillisecondsSinceEpoch(
-                                                  dates[indexDate]))
-                                          .toString(),
-                                      style: TextStyle(
-                                          fontSize: 16,
-                                          color: Theme.of(context)
-                                              .textTheme
-                                              .displayLarge
-                                              ?.color),
-                                    ),
-                                  ))),
-                          const SizedBox(
-                            height: 10,
-                          ),
-                          SizedBox(
-                            height:
-                                homeworks[dates[indexDate]]!.length.toDouble() *
-                                    110,
-                            child: ListView.builder(
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: homeworks[dates[indexDate]]?.length,
-                              itemBuilder: (context, index) {
-                                return Column(
-                                  children: [
-                                    GestureDetector(
-                                      child: Center(
-                                        child: Container(
-                                          height: 100,
-                                          width: MediaQuery.of(context)
-                                                  .size
-                                                  .width -
-                                              30,
-                                          decoration: BoxDecoration(
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                            shape: BoxShape.rectangle,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .secondary,
+                                height: 25,
+                                width: 85,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(10),
+                                  shape: BoxShape.rectangle,
+                                  color:
+                                      Theme.of(context).colorScheme.secondary,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    DateFormat('dd.MM.yyyy')
+                                        .format(
+                                          DateTime.fromMillisecondsSinceEpoch(
+                                            dates[indexDate],
                                           ),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              const SizedBox(
-                                                height: 3,
-                                              ),
-                                              Padding(
-                                                padding: const EdgeInsets.only(
-                                                    right: 10, left: 10),
-                                                child: Text(
-                                                  homeworks[dates[indexDate]]![
-                                                          index][0]
-                                                      .toString(),
-                                                  style: TextStyle(
-                                                    fontSize: 24,
-                                                    color: Theme.of(context)
-                                                        .textTheme
-                                                        .displayLarge
-                                                        ?.color,
+                                        )
+                                        .toString(),
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Theme.of(context)
+                                          .textTheme
+                                          .displayLarge
+                                          ?.color,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              height: homeworks[dates[indexDate]]!
+                                      .length
+                                      .toDouble() *
+                                  110,
+                              child: ListView.builder(
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: homeworks[dates[indexDate]]?.length,
+                                itemBuilder: (context, index) {
+                                  return Column(
+                                    children: [
+                                      GestureDetector(
+                                        child: Center(
+                                          child: Container(
+                                            height: 100,
+                                            width: MediaQuery.of(context)
+                                                    .size
+                                                    .width -
+                                                30,
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                              shape: BoxShape.rectangle,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .secondary,
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                const SizedBox(height: 3),
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                    right: 10,
+                                                    left: 10,
                                                   ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis
-                                                ),
-                                              ),
-                                              Padding(
-                                                padding: const EdgeInsets.only(
-                                                    right: 10, left: 10),
-                                                child: SizedBox(
-                                                  height: 54,
-                                                  child: HtmlWidget(
-                                                    homeworks[dates[indexDate]]![
-                                                        index][2],
-                                                    textStyle: TextStyle(
-                                                      fontSize: 12,
+                                                  child: Text(
+                                                    homeworks[dates[
+                                                                indexDate]]![
+                                                            index][0]
+                                                        .toString(),
+                                                    style: TextStyle(
+                                                      fontSize: 24,
                                                       color: Theme.of(context)
                                                           .textTheme
                                                           .displayLarge
                                                           ?.color,
-                                                      overflow:
-                                                          TextOverflow.fade,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                    right: 10,
+                                                    left: 10,
+                                                  ),
+                                                  child: SizedBox(
+                                                    height: 54,
+                                                    child: HtmlWidget(
+                                                      homeworks[dates[
+                                                              indexDate]]![
+                                                          index][2],
+                                                      textStyle: TextStyle(
+                                                        fontSize: 12,
+                                                        color: Theme.of(context)
+                                                            .textTheme
+                                                            .displayLarge
+                                                            ?.color,
+                                                        overflow:
+                                                            TextOverflow.fade,
+                                                      ),
                                                     ),
                                                   ),
                                                 ),
-                                              )
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                      onTap: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) => TaskPage(
-                                              task: homeworks[
-                                                  dates[indexDate]]![index],
-                                              function: deleteFromHomeworks,
+                                              ],
                                             ),
                                           ),
-                                        );
-                                      },
-                                    ),
-                                    const SizedBox(
-                                      height: 10,
-                                    )
-                                  ],
-                                );
-                              },
+                                        ),
+                                        onTap: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => TaskPage(
+                                                task: homeworks[
+                                                    dates[indexDate]]![index],
+                                                function: deleteFromHomeworks,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                      const SizedBox(height: 10),
+                                    ],
+                                  );
+                                },
+                              ),
                             ),
-                          )
-                        ],
-                      );
-                    })
-                : null,
-          )
-        ],
-      )),
+                          ],
+                        );
+                      },
+                    )
+                  : null,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

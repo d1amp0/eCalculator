@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ecalculator/domain/academic_calendar.dart';
+import 'package:ecalculator/server/functions.dart';
+import 'package:ecalculator/storage/settings_storage.dart';
 
 class PopoverButton extends StatefulWidget {
   final String startText;
   final TextEditingController? controller;
   final Function checkControllers;
 
-  const PopoverButton(
-      {super.key,
-      required this.startText,
-      required this.controller,
-      required this.checkControllers});
+  const PopoverButton({
+    super.key,
+    required this.startText,
+    required this.controller,
+    required this.checkControllers,
+  });
 
   @override
   State<PopoverButton> createState() => _PopoverButtonState();
@@ -22,15 +25,14 @@ class _PopoverButtonState extends State<PopoverButton> {
 
   void getPeriods() async {
     if (widget.startText == "Учебный период") {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      int? period = prefs.getInt("period_type");
+      int? period = await SettingsStorage().readInt("period_type");
       if (period == null) {
         list = [
           "1 четверть",
           "2 четверть",
           "3 четверть",
           "4 четверть",
-          "Учебный год"
+          "Учебный год",
         ];
       } else {
         if (period == 0) {
@@ -39,7 +41,7 @@ class _PopoverButtonState extends State<PopoverButton> {
             "2 четверть",
             "3 четверть",
             "4 четверть",
-            "Учебный год"
+            "Учебный год",
           ];
         } else {
           if (period == 1) {
@@ -49,11 +51,15 @@ class _PopoverButtonState extends State<PopoverButton> {
           }
         }
       }
-      setState(() {
-        list;
-      });
+      if (mounted) setState(() {});
     } else {
-      list = ['2025/2026', '2024/2025', '2023/2024'];
+      try {
+        final years = await academicYears();
+        list = years.isEmpty ? AcademicCalendar.recentYears() : years;
+      } on Object {
+        list = AcademicCalendar.recentYears();
+      }
+      if (mounted) setState(() {});
     }
   }
 
@@ -73,16 +79,33 @@ class _PopoverButtonState extends State<PopoverButton> {
         widget.checkControllers(false);
       },
       controller: widget.controller,
-      dropdownMenuEntries:
-          list.map<DropdownMenuEntry<String>>((String value) {
-        return DropdownMenuEntry<String>(value: value, label: value, style: ButtonStyle(foregroundColor: WidgetStatePropertyAll<Color>(
-            (Theme.of(context).textTheme.displayLarge?.color)!)));
+      dropdownMenuEntries: list.map<DropdownMenuEntry<String>>((String value) {
+        return DropdownMenuEntry<String>(
+          value: value,
+          label: value,
+          style: ButtonStyle(
+            foregroundColor: WidgetStatePropertyAll<Color>(
+              (Theme.of(context).textTheme.displayLarge?.color)!,
+            ),
+          ),
+        );
       }).toList(),
-      label: Text(widget.startText, style: TextStyle(fontSize: 15, color: Theme.of(context).textTheme.displayLarge?.color),),
-      textStyle: TextStyle(fontSize: 15, color: Theme.of(context).textTheme.displayLarge?.color),
+      label: Text(
+        widget.startText,
+        style: TextStyle(
+          fontSize: 15,
+          color: Theme.of(context).textTheme.displayLarge?.color,
+        ),
+      ),
+      textStyle: TextStyle(
+        fontSize: 15,
+        color: Theme.of(context).textTheme.displayLarge?.color,
+      ),
       menuStyle: MenuStyle(
-          backgroundColor: WidgetStatePropertyAll<Color>(
-              Theme.of(context).colorScheme.secondary)),
+        backgroundColor: WidgetStatePropertyAll<Color>(
+          Theme.of(context).colorScheme.secondary,
+        ),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Theme.of(context).colorScheme.secondary,
