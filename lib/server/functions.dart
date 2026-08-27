@@ -75,9 +75,7 @@ Future<List<dynamic>> homeworkServer() {
   );
 }
 
-Map<String, double> changeMarks(
-  Map<String, List<List<dynamic>>> marksMap,
-) {
+Map<String, double> changeMarks(Map<String, List<List<dynamic>>> marksMap) {
   final averages = <String, double>{};
   for (final entry in marksMap.entries) {
     final marks = entry.value.map(

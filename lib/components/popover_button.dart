@@ -8,11 +8,12 @@ class PopoverButton extends StatefulWidget {
   final TextEditingController? controller;
   final Function checkControllers;
 
-  const PopoverButton(
-      {super.key,
-      required this.startText,
-      required this.controller,
-      required this.checkControllers});
+  const PopoverButton({
+    super.key,
+    required this.startText,
+    required this.controller,
+    required this.checkControllers,
+  });
 
   @override
   State<PopoverButton> createState() => _PopoverButtonState();
@@ -31,7 +32,7 @@ class _PopoverButtonState extends State<PopoverButton> {
           "2 четверть",
           "3 четверть",
           "4 четверть",
-          "Учебный год"
+          "Учебный год",
         ];
       } else {
         if (period == 0) {
@@ -40,7 +41,7 @@ class _PopoverButtonState extends State<PopoverButton> {
             "2 четверть",
             "3 четверть",
             "4 четверть",
-            "Учебный год"
+            "Учебный год",
           ];
         } else {
           if (period == 1) {
@@ -80,23 +81,31 @@ class _PopoverButtonState extends State<PopoverButton> {
       controller: widget.controller,
       dropdownMenuEntries: list.map<DropdownMenuEntry<String>>((String value) {
         return DropdownMenuEntry<String>(
-            value: value,
-            label: value,
-            style: ButtonStyle(
-                foregroundColor: WidgetStatePropertyAll<Color>(
-                    (Theme.of(context).textTheme.displayLarge?.color)!)));
+          value: value,
+          label: value,
+          style: ButtonStyle(
+            foregroundColor: WidgetStatePropertyAll<Color>(
+              (Theme.of(context).textTheme.displayLarge?.color)!,
+            ),
+          ),
+        );
       }).toList(),
       label: Text(
         widget.startText,
         style: TextStyle(
-            fontSize: 15,
-            color: Theme.of(context).textTheme.displayLarge?.color),
+          fontSize: 15,
+          color: Theme.of(context).textTheme.displayLarge?.color,
+        ),
       ),
       textStyle: TextStyle(
-          fontSize: 15, color: Theme.of(context).textTheme.displayLarge?.color),
+        fontSize: 15,
+        color: Theme.of(context).textTheme.displayLarge?.color,
+      ),
       menuStyle: MenuStyle(
-          backgroundColor: WidgetStatePropertyAll<Color>(
-              Theme.of(context).colorScheme.secondary)),
+        backgroundColor: WidgetStatePropertyAll<Color>(
+          Theme.of(context).colorScheme.secondary,
+        ),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Theme.of(context).colorScheme.secondary,

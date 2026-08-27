@@ -56,8 +56,8 @@ Release signing is intentionally not configured in the repository.
 
 ## Development
 
-Use Flutter 3.24.5 or a compatible stable Flutter release with Dart 3.5.3 or
-newer. Before opening a pull request, run:
+Use Flutter 3.47.0 stable with Dart 3.13.0 or newer. Before opening a pull
+request, run:
 
 ```sh
 dart format --output=none --set-exit-if-changed .
@@ -84,6 +84,12 @@ does not fall back to storing credentials in SharedPreferences.
 No software can make an absolute security guarantee. Please report suspected
 vulnerabilities according to [SECURITY.md](SECURITY.md), and never include
 credentials, session cookies, or student data in a public issue.
+
+Android v4 uses the application ID `com.d1amp0.ecalculator` and requires
+Android 7.0 (API 24) or newer. Older builds used `com.example.hello`; Android
+therefore treats v4 as a different application, so it cannot update those
+builds in place. Android Auto Backup is disabled to prevent secure-storage
+ciphertext from being restored without its device-bound key.
 
 ## eSchool integration disclaimer
 

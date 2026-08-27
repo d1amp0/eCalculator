@@ -30,10 +30,7 @@ class _MainPageState extends State<MainPage>
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
-      body: IndexedStack(
-        index: _pageIndex,
-        children: pageList,
-      ),
+      body: IndexedStack(index: _pageIndex, children: pageList),
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
           backgroundColor: Theme.of(context).colorScheme.secondary,
