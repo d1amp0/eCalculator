@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -6,6 +7,7 @@ import 'package:ecalculator/domain/mark_calculator.dart';
 import 'package:http/http.dart' as http;
 
 const _baseUrl = 'https://app.eschool.center/ec-server';
+const eschoolRequestTimeout = Duration(seconds: 15);
 const _characters =
     'AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz1234567890';
 
@@ -17,6 +19,7 @@ class EschoolClient {
     Map<String, String>? cookies,
     this.userId,
     this.period = '',
+    this.requestTimeout = eschoolRequestTimeout,
   })  : _httpClient = httpClient ?? http.Client(),
         _cookies = Map.of(cookies ?? const {});
 
@@ -24,6 +27,7 @@ class EschoolClient {
   final String? credentialHash;
   final http.Client _httpClient;
   final Map<String, String> _cookies;
+  final Duration requestTimeout;
 
   int? userId;
   String period;
@@ -38,11 +42,13 @@ class EschoolClient {
     required String username,
     required String password,
     http.Client? httpClient,
+    Duration requestTimeout = eschoolRequestTimeout,
   }) {
     return EschoolClient(
       username: username,
       credentialHash: hashPassword(password),
       httpClient: httpClient,
+      requestTimeout: requestTimeout,
     );
   }
 
@@ -50,31 +56,41 @@ class EschoolClient {
     final credential = credentialHash;
     if (credential == null) return AuthenticationResult.invalidCredentials;
 
-    final response = await _httpClient.post(
-      Uri.parse('$_baseUrl/login'),
-      headers: const {'User-Agent': 'Mozilla/5.0'},
-      body: {
-        'username': username,
-        'password': credential,
-        'device': json.encode({
-          'cliType': 'web',
-          'cliVer': 'v.1588',
-          'pushToken': _randomString(64),
-          'deviceId': '8ezTOdgnXcJlv5gQR0Qqgb52kO5l4jht',
-          'deviceName': 'Chrome',
-          'deviceModel': 136,
-          'cliOs': 'Win32',
-          'cliOsVer': 'null',
-        }),
-      },
-    );
+    final http.Response response;
+    try {
+      response = await _httpClient.post(
+        Uri.parse('$_baseUrl/login'),
+        headers: const {'User-Agent': 'Mozilla/5.0'},
+        body: {
+          'username': username,
+          'password': credential,
+          'device': json.encode({
+            'cliType': 'web',
+            'cliVer': 'v.1588',
+            'pushToken': _randomString(64),
+            'deviceId': '8ezTOdgnXcJlv5gQR0Qqgb52kO5l4jht',
+            'deviceName': 'Chrome',
+            'deviceModel': 136,
+            'cliOs': 'Win32',
+            'cliOsVer': 'null',
+          }),
+        },
+      ).timeout(requestTimeout);
+    } on TimeoutException {
+      return AuthenticationResult.unavailable;
+    }
 
     if (response.statusCode != 200) {
       return _loginResultForStatus(response.statusCode);
     }
     _updateCookies(response);
 
-    final stateResponse = await _rawGet(Uri.parse('$_baseUrl/state'));
+    final http.Response stateResponse;
+    try {
+      stateResponse = await _rawGet(Uri.parse('$_baseUrl/state'));
+    } on TimeoutException {
+      return AuthenticationResult.unavailable;
+    }
     if (stateResponse.statusCode == 401) {
       return AuthenticationResult.invalidCredentials;
     }
@@ -345,7 +361,7 @@ class EschoolClient {
               'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 '
               'Safari/537.36',
         },
-      );
+      ).timeout(requestTimeout);
 
   Future<http.Response> _rawPut(Uri url, Map<String, dynamic> data) =>
       _httpClient.put(
@@ -356,7 +372,7 @@ class EschoolClient {
               'es_prs=93799; es_user=150251; es_org=6; es_pos=S; '
               'clientUrl=/Private/student/diary/1%3Fd1%3D1745787600000',
         },
-      );
+      ).timeout(requestTimeout);
 
   String get _cookieHeader =>
       _cookies.entries.map((entry) => '${entry.key}=${entry.value}').join('; ');

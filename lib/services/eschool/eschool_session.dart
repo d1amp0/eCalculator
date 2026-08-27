@@ -11,6 +11,7 @@ enum LoginResult {
   unavailable,
   forbidden,
   rateLimited,
+  storageFailure,
 }
 
 typedef EschoolClientFactory = EschoolClient Function({
@@ -129,21 +130,30 @@ class EschoolSession {
         break;
     }
 
-    _client = candidate;
-    _remembered = rememberMe;
-    candidate.onSessionChanged = _persistCurrentSession;
+    if (!rememberMe) {
+      try {
+        await _authStorage.clear();
+      } on Object {
+        return LoginResult.storageFailure;
+      }
+      _activate(candidate, remembered: false);
+      return LoginResult.authenticated;
+    }
 
     try {
-      if (rememberMe) {
-        await _persistCurrentSession();
-      } else {
-        await _authStorage.clear();
-      }
-      return LoginResult.authenticated;
+      await _authStorage.writeSession(_encodeSession(candidate));
     } on Object {
-      _remembered = false;
+      try {
+        await _authStorage.clear();
+      } on Object {
+        return LoginResult.storageFailure;
+      }
+      _activate(candidate, remembered: false);
       return LoginResult.authenticatedWithoutPersistence;
     }
+
+    _activate(candidate, remembered: true);
+    return LoginResult.authenticated;
   }
 
   Future<void> logout() async {
@@ -161,15 +171,22 @@ class EschoolSession {
 
   Future<void> _persistCurrentSession() async {
     if (!_remembered || _client == null) return;
-    final current = _client!;
-    await _authStorage.writeSession(
-      json.encode({
-        'username': current.username,
-        'credentialHash': current.credentialHash,
-        'cookies': current.cookies,
-        'userId': current.userId,
-      }),
-    );
+    await _authStorage.writeSession(_encodeSession(_client!));
+  }
+
+  void _activate(EschoolClient candidate, {required bool remembered}) {
+    _client = candidate;
+    _remembered = remembered;
+    candidate.onSessionChanged = _persistCurrentSession;
+  }
+
+  String _encodeSession(EschoolClient current) {
+    return json.encode({
+      'username': current.username,
+      'credentialHash': current.credentialHash,
+      'cookies': current.cookies,
+      'userId': current.userId,
+    });
   }
 
   Future<void> _removeLegacyAuthentication() async {

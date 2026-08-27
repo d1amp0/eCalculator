@@ -107,6 +107,13 @@ class _LoginPageState extends State<LoginPage> {
                   'Проверьте интернет или попробуйте позже.',
             );
             return;
+          case LoginResult.storageFailure:
+            showErrorLogin(
+              context,
+              message: 'Не удалось безопасно обновить данные входа. '
+                  'Попробуйте ещё раз.',
+            );
+            return;
         }
       }
     } finally {

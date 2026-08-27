@@ -74,18 +74,73 @@ void main() {
       expect(session.isAuthenticated, isTrue);
     });
 
-    test('keeps successful login in memory when persistence fails', () async {
-      final storage = MemoryAuthStorage()..failWrite = true;
+    test(
+      'keeps account B only in memory after failed write and safe cleanup',
+      () async {
+        final storage = MemoryAuthStorage()
+          ..value = _savedAccountA
+          ..failWrite = true;
+        final session = _sessionForResponses([
+          http.Response('{}', 200),
+          http.Response(json.encode({'userId': 42}), 200),
+        ], storage: storage);
+
+        expect(
+          await _login(
+            session,
+            username: 'account-b',
+            rememberMe: true,
+          ),
+          LoginResult.authenticatedWithoutPersistence,
+        );
+        expect(session.isAuthenticated, isTrue);
+        expect(session.client.username, 'account-b');
+        expect(storage.value, isNull);
+        expect(storage.clearCalls, 1);
+      },
+    );
+
+    test('rejects account B when non-remembered cleanup fails', () async {
+      final storage = MemoryAuthStorage()
+        ..value = _savedAccountA
+        ..failClear = true;
       final session = _sessionForResponses([
         http.Response('{}', 200),
         http.Response(json.encode({'userId': 42}), 200),
       ], storage: storage);
 
       expect(
-        await _login(session, rememberMe: true),
-        LoginResult.authenticatedWithoutPersistence,
+        await _login(session, username: 'account-b'),
+        LoginResult.storageFailure,
       );
-      expect(session.isAuthenticated, isTrue);
+      expect(session.isAuthenticated, isFalse);
+      expect(() => session.client, throwsStateError);
+      expect(storage.value, _savedAccountA);
+      expect(storage.clearCalls, 1);
+    });
+
+    test('rejects account B when both write and cleanup fail', () async {
+      final storage = MemoryAuthStorage()
+        ..value = _savedAccountA
+        ..failWrite = true
+        ..failClear = true;
+      final session = _sessionForResponses([
+        http.Response('{}', 200),
+        http.Response(json.encode({'userId': 42}), 200),
+      ], storage: storage);
+
+      expect(
+        await _login(
+          session,
+          username: 'account-b',
+          rememberMe: true,
+        ),
+        LoginResult.storageFailure,
+      );
+      expect(session.isAuthenticated, isFalse);
+      expect(() => session.client, throwsStateError);
+      expect(storage.value, _savedAccountA);
+      expect(storage.clearCalls, 1);
     });
   });
 
@@ -190,10 +245,16 @@ void main() {
 
 const _savedSession =
     '{"username":"student","credentialHash":"derived","cookies":{"JSESSIONID":"saved"},"userId":42}';
+const _savedAccountA =
+    '{"username":"account-a","credentialHash":"derived-a","cookies":{"JSESSIONID":"account-a-session"},"userId":1}';
 
-Future<LoginResult> _login(EschoolSession session, {bool rememberMe = false}) {
+Future<LoginResult> _login(
+  EschoolSession session, {
+  String username = 'student',
+  bool rememberMe = false,
+}) {
   return session.login(
-    username: 'student',
+    username: username,
     password: 'password',
     rememberMe: rememberMe,
   );
