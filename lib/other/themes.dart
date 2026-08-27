@@ -1,4 +1,5 @@
 import 'package:ecalculator/other/colors.dart' as colors;
+import 'package:ecalculator/other/app_theme_colors.dart';
 import 'package:flutter/material.dart';
 
 ThemeData defaultMode = _buildTheme(
@@ -75,5 +76,8 @@ ThemeData _buildTheme({
       backgroundColor: scheme.surface,
       surfaceTintColor: Colors.transparent,
     ),
+    extensions: [
+      AppThemeColors(scaffoldForeground: headerForeground),
+    ],
   );
 }

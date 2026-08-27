@@ -7,7 +7,7 @@ class PlusButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FilledButton.icon(
+    return FilledButton.tonalIcon(
       key: const ValueKey('add-mark-button'),
       onPressed: onPressed,
       icon: const Icon(Icons.add),

@@ -4,6 +4,7 @@ import 'package:ecalculator/components/popover_button.dart';
 import 'package:ecalculator/domain/academic_calendar.dart';
 import 'package:ecalculator/domain/student_data.dart';
 import 'package:ecalculator/pages/mark_page.dart';
+import 'package:ecalculator/other/app_theme_colors.dart';
 import 'package:ecalculator/server/functions.dart';
 import 'package:ecalculator/services/app_session.dart';
 import 'package:ecalculator/services/demo/demo_data_source.dart';
@@ -124,18 +125,23 @@ class _MarksPageState extends State<MarksPage>
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
               child: isLoading
-                  ? const Center(
-                      key: ValueKey('marks-loading'),
-                      child: CircularProgressIndicator(),
+                  ? Center(
+                      key: const ValueKey('marks-loading'),
+                      child: CircularProgressIndicator(
+                        color: AppThemeColors.scaffoldText(context),
+                      ),
                     )
                   : averages.isEmpty
-                      ? const Center(
-                          key: ValueKey('marks-empty'),
+                      ? Center(
+                          key: const ValueKey('marks-empty'),
                           child: Padding(
-                            padding: EdgeInsets.all(24),
+                            padding: const EdgeInsets.all(24),
                             child: Text(
                               'Нет оценок за выбранный период.',
                               textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: AppThemeColors.scaffoldText(context),
+                              ),
                             ),
                           ),
                         )
@@ -177,7 +183,12 @@ class _MarksPageState extends State<MarksPage>
                                           overflow: TextOverflow.ellipsis,
                                           style: Theme.of(context)
                                               .textTheme
-                                              .titleMedium,
+                                              .titleMedium
+                                              ?.copyWith(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurface,
+                                              ),
                                         ),
                                       ),
                                       const SizedBox(width: 12),
@@ -187,11 +198,19 @@ class _MarksPageState extends State<MarksPage>
                                             .textTheme
                                             .titleLarge
                                             ?.copyWith(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface,
                                               fontWeight: FontWeight.w700,
                                             ),
                                       ),
                                       const SizedBox(width: 4),
-                                      const Icon(Icons.chevron_right),
+                                      Icon(
+                                        Icons.chevron_right,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurface,
+                                      ),
                                     ],
                                   ),
                                 ),
