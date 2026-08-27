@@ -28,7 +28,8 @@ void main() {
         ),
       );
 
-      expect(find.text('Оценки'), findsOneWidget);
+      expect(find.text('Калькулятор'), findsOneWidget);
+      expect(find.text('Оценки'), findsNothing);
       expect(find.text('Задания'), findsOneWidget);
       expect(find.text('Настройки'), findsOneWidget);
       expect(find.text('Marks page'), findsOneWidget);
@@ -66,7 +67,7 @@ void main() {
     }
   });
 
-  testWidgets('year and period selectors open, select and fit narrow screens',
+  testWidgets('entire year and period selector surfaces are tappable',
       (tester) async {
     tester.view.physicalSize = const Size(320, 700);
     tester.view.devicePixelRatio = 1;
@@ -112,14 +113,61 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    await tester.tap(find.byKey(const ValueKey('period-selector')));
+
+    Future<void> expectSurfaceOpens(String selector) async {
+      final finder = find.byKey(ValueKey('$selector-selector'));
+      final rect = tester.getRect(finder);
+      final points = [
+        Offset(rect.left + 2, rect.center.dy),
+        rect.center,
+        Offset(rect.right - 2, rect.center.dy),
+      ];
+      for (final point in points) {
+        await tester.tapAt(point);
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(ValueKey('$selector-selector-sheet')),
+          findsOneWidget,
+        );
+        await tester.tapAt(const Offset(4, 4));
+        await tester.pumpAndSettle();
+      }
+
+      await tester.tapAt(Offset(rect.center.dx, rect.bottom + 4));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(ValueKey('$selector-selector-sheet')),
+        findsNothing,
+      );
+    }
+
+    await expectSurfaceOpens('year');
+    await expectSurfaceOpens('period');
+    expect(selections, 0);
+
+    await tester.tapAt(
+      tester.getRect(find.byKey(const ValueKey('year-selector'))).center,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(
+      const ValueKey('year-selector-option-2025/2026'),
+    ));
+    await tester.pumpAndSettle();
+    expect(year.text, '2025/2026');
+    expect(selections, 1);
+
+    await tester.tapAt(
+      tester.getRect(find.byKey(const ValueKey('period-selector'))).center,
+    );
     await tester.pumpAndSettle();
     expect(find.text('1 четверть'), findsOneWidget);
-    await tester.tap(find.text('1 четверть'));
+    await tester.tap(find.byKey(
+      const ValueKey('period-selector-option-1 четверть'),
+    ));
     await tester.pumpAndSettle();
 
     expect(period.text, '1 четверть');
-    expect(selections, 1);
+    expect(selections, 2);
     expect(
       tester
           .widget<Text>(
@@ -153,9 +201,41 @@ void main() {
     expect(find.text('eCalculator'), findsOneWidget);
     expect(find.textContaining('Неофициальное приложение'), findsOneWidget);
     expect(find.textContaining('защищённом хранилище ОС'), findsOneWidget);
+    final logo = tester.widget<Image>(
+      find.byKey(const ValueKey('about-logo')),
+    );
+    expect((logo.image as AssetImage).assetName, 'lib/images/icon_black.png');
+    expect((logo.image as AssetImage).assetName, isNot(contains('new_year')));
 
     await tester.tap(find.text('Закрыть'));
     await tester.pumpAndSettle();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: lightMode,
+        home: Scaffold(
+          appBar: AppBar(actions: const [MoreMenu(canLeave: true)]),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('more-menu-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('about-menu-item')));
+    await tester.pumpAndSettle();
+    final lightLogo = tester.widget<Image>(
+      find.byKey(const ValueKey('about-logo')),
+    );
+    expect(
+      (lightLogo.image as AssetImage).assetName,
+      'lib/images/icon_new.png',
+    );
+    expect(
+      (lightLogo.image as AssetImage).assetName,
+      isNot(contains('new_year')),
+    );
+    await tester.tap(find.text('Закрыть'));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.byKey(const ValueKey('more-menu-button')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('logout-menu-item')));

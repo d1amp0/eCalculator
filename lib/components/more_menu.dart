@@ -18,12 +18,16 @@ class MoreMenu extends StatelessWidget {
       builder: (dialogContext) {
         final theme = Theme.of(dialogContext);
         final scheme = theme.colorScheme;
+        final logoAsset = theme.brightness == Brightness.dark
+            ? 'lib/images/icon_black.png'
+            : 'lib/images/icon_new.png';
         return AlertDialog(
           key: const ValueKey('about-dialog'),
           backgroundColor: scheme.surface,
           surfaceTintColor: Colors.transparent,
           icon: Image.asset(
-            'lib/images/icon_new.png',
+            logoAsset,
+            key: const ValueKey('about-logo'),
             width: 56,
             height: 56,
             errorBuilder: (_, __, ___) => Icon(

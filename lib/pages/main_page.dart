@@ -72,7 +72,7 @@ class _MainPageState extends State<MainPage>
             NavigationDestination(
               icon: Icon(Icons.calculate_outlined),
               selectedIcon: Icon(Icons.calculate),
-              label: 'Оценки',
+              label: 'Калькулятор',
             ),
             NavigationDestination(
               icon: Icon(Icons.assignment_outlined),

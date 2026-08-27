@@ -44,6 +44,30 @@ void main() {
     expect(scenario.marks.first.isEdited, isTrue);
   });
 
+  test('saving unchanged source values creates no edit operation', () {
+    final scenario = CalculatorScenario(const [first, second]);
+
+    scenario.edit('first', value: first.value, weight: first.weight);
+
+    expect(scenario.hasChanges, isFalse);
+    expect(scenario.operations, isEmpty);
+  });
+
+  test('edits an added mark in place without creating another mark', () {
+    final scenario = CalculatorScenario(const [first]);
+    scenario.add(value: 5, weight: 2);
+    final id = scenario.marks.last.mark.id;
+
+    scenario.edit(id, value: 4, weight: 0.5);
+
+    expect(scenario.marks, hasLength(2));
+    expect(scenario.marks.last.mark.id, id);
+    expect(scenario.marks.last.mark.value, 4);
+    expect(scenario.marks.last.mark.weight, 0.5);
+    expect(scenario.operations, hasLength(1));
+    expect(scenario.operations.single.type, ScenarioOperationType.add);
+  });
+
   test('excludes and restores a source mark', () {
     final scenario = CalculatorScenario(const [first, second]);
 

@@ -59,14 +59,28 @@ class _MarkPageState extends State<MarkPage> {
     }
 
     if (item.isAdded) {
-      final remove = await _showRestoreSheet(
+      final result = await _showMarkEditor(
         context,
-        title: 'Новая оценка',
-        subtitle: 'Добавлена только в текущий сценарий',
-        actionLabel: 'Удалить из сценария',
-        actionIcon: Icons.delete_outline,
+        initial: item.mark,
+        withPlusMinus: withPlusMinus,
+        allowRemove: true,
       );
-      if (remove) _change(() => scenario.restore(item.mark.id));
+      if (result == null) return;
+      switch (result.action) {
+        case _EditorAction.save:
+          _change(
+            () => scenario.edit(
+              item.mark.id,
+              value: result.value,
+              weight: result.weight,
+            ),
+          );
+        case _EditorAction.remove:
+          _change(() => scenario.restore(item.mark.id));
+        case _EditorAction.exclude:
+        case _EditorAction.restore:
+          throw StateError('Unsupported action for an added mark');
+      }
       return;
     }
 
@@ -91,6 +105,8 @@ class _MarkPageState extends State<MarkPage> {
         _change(() => scenario.exclude(item.mark.id));
       case _EditorAction.restore:
         _change(() => scenario.restore(item.mark.id));
+      case _EditorAction.remove:
+        throw StateError('Unsupported action for a source mark');
     }
   }
 
@@ -224,21 +240,17 @@ class _ResultArea extends StatelessWidget {
                               ),
                         ),
                 ),
-                if (scenario.hasChanges) ...[
+                if (scenario.hasChanges && delta != null) ...[
                   const SizedBox(height: 6),
                   Row(
                     children: [
                       Icon(
-                        delta != null && delta < 0
-                            ? Icons.trending_down
-                            : Icons.trending_up,
+                        delta < 0 ? Icons.trending_down : Icons.trending_up,
                         size: 18,
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        delta == null
-                            ? 'После изменений оценок нет'
-                            : '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(2)}',
+                        '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(2)}',
                         key: const ValueKey('average-delta'),
                         style:
                             Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -309,21 +321,41 @@ class _ScenarioArea extends StatelessWidget {
                   ],
                 ),
                 for (final operation in scenario.operations)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(_operationIcon(operation.type)),
-                    title: Text(_operationLabel(operation)),
-                    subtitle: Text(_operationSubtitle(operation)),
-                    trailing: IconButton(
-                      tooltip: 'Отменить изменение',
-                      onPressed: () => onRestore(operation.mark.id),
-                      icon: const Icon(Icons.undo),
-                    ),
+                  _ScenarioOperationTile(
+                    operation: operation,
+                    onRestore: () => onRestore(operation.mark.id),
                   ),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ScenarioOperationTile extends StatelessWidget {
+  const _ScenarioOperationTile({
+    required this.operation,
+    required this.onRestore,
+  });
+
+  final ScenarioOperation operation;
+  final VoidCallback onRestore;
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitle = _operationSubtitle(operation);
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+      leading: Icon(_operationIcon(operation.type)),
+      title: Text(_operationLabel(operation)),
+      subtitle: subtitle == null ? null : Text(subtitle),
+      trailing: IconButton(
+        tooltip: 'Отменить изменение',
+        onPressed: onRestore,
+        icon: const Icon(Icons.undo),
       ),
     );
   }
@@ -338,21 +370,26 @@ IconData _operationIcon(ScenarioOperationType type) => switch (type) {
 String _operationLabel(ScenarioOperation operation) => switch (operation.type) {
       ScenarioOperationType.add =>
         '+ ${formatMarkValue(operation.mark.value)} ×${formatWeight(operation.mark.weight)}',
-      ScenarioOperationType.edit =>
-        '${formatMarkValue(operation.original!.value)} → ${formatMarkValue(operation.mark.value)}',
+      ScenarioOperationType.edit => operation.original!.value !=
+              operation.mark.value
+          ? '${formatMarkValue(operation.original!.value)} → ${formatMarkValue(operation.mark.value)}'
+          : '×${formatWeight(operation.original!.weight)} → ×${formatWeight(operation.mark.weight)}',
       ScenarioOperationType.exclude =>
         '− ${formatMarkValue(operation.mark.value)} ×${formatWeight(operation.mark.weight)}',
     };
 
-String _operationSubtitle(ScenarioOperation operation) =>
+String? _operationSubtitle(ScenarioOperation operation) =>
     switch (operation.type) {
       ScenarioOperationType.add => 'Новая оценка',
-      ScenarioOperationType.edit =>
-        'Коэффициент ${formatWeight(operation.original!.weight)} → ${formatWeight(operation.mark.weight)}',
+      ScenarioOperationType.edit => operation.original!.value !=
+                  operation.mark.value &&
+              operation.original!.weight != operation.mark.weight
+          ? '×${formatWeight(operation.original!.weight)} → ×${formatWeight(operation.mark.weight)}'
+          : null,
       ScenarioOperationType.exclude => 'Исключена из расчёта',
     };
 
-enum _EditorAction { save, exclude, restore }
+enum _EditorAction { save, exclude, restore, remove }
 
 class _MarkEditorResult {
   const _MarkEditorResult(this.action, this.value, this.weight);
@@ -368,6 +405,7 @@ Future<_MarkEditorResult?> _showMarkEditor(
   required bool withPlusMinus,
   bool allowExclude = false,
   bool allowRestore = false,
+  bool allowRemove = false,
 }) {
   return showModalBottomSheet<_MarkEditorResult>(
     context: context,
@@ -378,6 +416,7 @@ Future<_MarkEditorResult?> _showMarkEditor(
       withPlusMinus: withPlusMinus,
       allowExclude: allowExclude,
       allowRestore: allowRestore,
+      allowRemove: allowRemove,
     ),
   );
 }
@@ -388,12 +427,14 @@ class _MarkEditorSheet extends StatefulWidget {
     required this.withPlusMinus,
     required this.allowExclude,
     required this.allowRestore,
+    required this.allowRemove,
   });
 
   final StudentMark? initial;
   final bool withPlusMinus;
   final bool allowExclude;
   final bool allowRestore;
+  final bool allowRemove;
 
   @override
   State<_MarkEditorSheet> createState() => _MarkEditorSheetState();
@@ -597,8 +638,7 @@ class _MarkEditorSheetState extends State<_MarkEditorSheet> {
                       alpha: 0.38,
                     ),
                   ),
-                  child:
-                      Text(widget.initial == null ? 'Добавить' : 'Сохранить'),
+                  child: Text(widget.initial == null ? 'Добавить' : 'Изменить'),
                 ),
                 if (widget.allowExclude)
                   TextButton.icon(
@@ -617,6 +657,14 @@ class _MarkEditorSheetState extends State<_MarkEditorSheet> {
                     ),
                     icon: const Icon(Icons.undo),
                     label: const Text('Вернуть исходную оценку'),
+                  ),
+                if (widget.allowRemove)
+                  TextButton.icon(
+                    key: const ValueKey('remove-added-mark-button'),
+                    onPressed: () => _return(_EditorAction.remove),
+                    style: TextButton.styleFrom(foregroundColor: scheme.error),
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Удалить из сценария'),
                   ),
                 TextButton(
                   key: const ValueKey('cancel-mark-editor-button'),

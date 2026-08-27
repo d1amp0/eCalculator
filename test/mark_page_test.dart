@@ -51,6 +51,8 @@ void main() {
 
     expect(find.text('Изменить оценку'), findsOneWidget);
     expect(find.byKey(const ValueKey('save-mark-button')), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Изменить'), findsOneWidget);
+    expect(find.text('Сохранить'), findsNothing);
     expect(find.byKey(const ValueKey('exclude-mark-button')), findsOneWidget);
   });
 
@@ -62,6 +64,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('add-mark-button')));
     await tester.pumpAndSettle();
+    expect(find.widgetWithText(FilledButton, 'Добавить'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('save-mark-button')));
     await tester.pumpAndSettle();
 
@@ -74,6 +77,125 @@ void main() {
 
     expect(find.byKey(const ValueKey('scenario-area')), findsNothing);
     expect(find.text('3.00'), findsOneWidget);
+  });
+
+  testWidgets('added mark can be edited in place and keeps its scenario id',
+      (tester) async {
+    await tester
+        .pumpWidget(_app(const MarkPage(name: 'Алгебра', markList: marks)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('add-mark-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('quick-weight-2')));
+    await tester.tap(find.byKey(const ValueKey('save-mark-button')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('mark-scenario-1')));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(FilledButton, 'Изменить'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('remove-added-mark-button')),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(ChoiceChip, '4'));
+    await tester.tap(find.byKey(const ValueKey('quick-weight-0.5')));
+    await tester.tap(find.byKey(const ValueKey('save-mark-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('mark-tile-scenario-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mark-tile-scenario-2')), findsNothing);
+    expect(_text(tester, 'mark-value-scenario-1').data, '4');
+    expect(_text(tester, 'mark-weight-scenario-1').data, '×0.5');
+    expect(find.text('+ 4 ×0.5'), findsOneWidget);
+    expect(find.text('Новая оценка'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('mark-scenario-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('remove-added-mark-button')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('mark-tile-scenario-1')), findsNothing);
+    expect(find.byKey(const ValueKey('scenario-area')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('scenario text shows only a changed mark value', (tester) async {
+    await tester
+        .pumpWidget(_app(const MarkPage(name: 'Алгебра', markList: marks)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('mark-real-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '4'));
+    await tester.tap(find.byKey(const ValueKey('save-mark-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('3 → 4'), findsOneWidget);
+    expect(find.text('×1 → ×1'), findsNothing);
+  });
+
+  testWidgets('scenario text shows only a changed coefficient', (tester) async {
+    await tester
+        .pumpWidget(_app(const MarkPage(name: 'Алгебра', markList: marks)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('mark-real-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('quick-weight-2')));
+    await tester.tap(find.byKey(const ValueKey('save-mark-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('×1 → ×2'), findsOneWidget);
+    expect(find.text('3 → 3'), findsNothing);
+  });
+
+  testWidgets('scenario text shows value and coefficient when both change',
+      (tester) async {
+    await tester
+        .pumpWidget(_app(const MarkPage(name: 'Алгебра', markList: marks)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('mark-real-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '4'));
+    await tester.tap(find.byKey(const ValueKey('quick-weight-2')));
+    await tester.tap(find.byKey(const ValueKey('save-mark-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('3 → 4'), findsOneWidget);
+    expect(find.text('×1 → ×2'), findsOneWidget);
+  });
+
+  testWidgets('saving an unchanged source mark is a no-op', (tester) async {
+    await tester
+        .pumpWidget(_app(const MarkPage(name: 'Алгебра', markList: marks)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('mark-real-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('save-mark-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('scenario-area')), findsNothing);
+    expect(find.text('3 → 3'), findsNothing);
+    expect(find.text('×1 → ×1'), findsNothing);
+  });
+
+  testWidgets('excluding every mark shows an empty result without fake delta',
+      (tester) async {
+    await tester
+        .pumpWidget(_app(const MarkPage(name: 'Алгебра', markList: marks)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('mark-real-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('exclude-mark-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('3.00'), findsOneWidget);
+    expect(find.text('—'), findsOneWidget);
+    expect(find.byKey(const ValueKey('average-delta')), findsNothing);
+    expect(find.text('После изменений оценок нет'), findsNothing);
   });
 
   testWidgets('saving editor disposes its controller after sheet teardown',

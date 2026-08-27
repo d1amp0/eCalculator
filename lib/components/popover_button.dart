@@ -61,6 +61,73 @@ class _PopoverButtonState extends State<PopoverButton> {
     if (mounted) setState(() => _options = options);
   }
 
+  Future<void> _openOptions() async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        final scheme = theme.colorScheme;
+        return SafeArea(
+          key: ValueKey('$_keyName-sheet'),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  widget.startText,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (_options.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 420),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _options.length,
+                      itemBuilder: (context, index) {
+                        final option = _options[index];
+                        final isSelected = widget.controller.text == option;
+                        return ListTile(
+                          key: ValueKey('$_keyName-option-$option'),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          selected: isSelected,
+                          selectedTileColor: scheme.secondaryContainer,
+                          textColor: scheme.onSurface,
+                          selectedColor: scheme.onSecondaryContainer,
+                          title: Text(
+                            option,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: isSelected ? const Icon(Icons.check) : null,
+                          onTap: () => Navigator.pop(sheetContext, option),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (selected == null || !mounted) return;
+    widget.controller.text = selected;
+    widget.checkControllers(false);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -75,89 +142,55 @@ class _PopoverButtonState extends State<PopoverButton> {
       listenable: widget.controller,
       builder: (context, _) {
         final selected = widget.controller.text;
-        return PopupMenuButton<String>(
-          key: ValueKey(_keyName),
-          tooltip: widget.startText,
-          position: PopupMenuPosition.under,
-          color: scheme.surfaceContainer,
-          surfaceTintColor: Colors.transparent,
-          constraints: const BoxConstraints(minWidth: 180, maxWidth: 300),
-          onSelected: (value) {
-            widget.controller.text = value;
-            widget.checkControllers(false);
-          },
-          itemBuilder: (context) {
-            if (_options.isEmpty) {
-              return const [
-                PopupMenuItem<String>(
-                  enabled: false,
-                  child: Text('Загрузка…'),
-                ),
-              ];
-            }
-            return [
-              for (final option in _options)
-                PopupMenuItem<String>(
-                  key: ValueKey('$_keyName-option-$option'),
-                  value: option,
+        return Semantics(
+          button: true,
+          label:
+              '${widget.startText}: ${selected.isEmpty ? 'не выбран' : selected}',
+          child: Material(
+            key: ValueKey(_keyName),
+            color: scheme.surfaceContainer,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: scheme.outlineVariant),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              key: ValueKey('$_keyName-tap-target'),
+              onTap: _openOptions,
+              child: SizedBox(
+                height: 48,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Row(
                     children: [
+                      Icon(
+                        _isPeriod
+                            ? Icons.calendar_view_month_outlined
+                            : Icons.calendar_today_outlined,
+                        size: 18,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          option,
+                          selected.isEmpty ? widget.startText : selected,
+                          key: ValueKey('$_keyName-value'),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: scheme.onSurface),
+                          style:
+                              Theme.of(context).textTheme.labelLarge?.copyWith(
+                                    color: scheme.onSurface,
+                                  ),
                         ),
                       ),
-                      if (selected == option) ...[
-                        const SizedBox(width: 12),
-                        Icon(Icons.check, size: 20, color: scheme.primary),
-                      ],
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.arrow_drop_down,
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ],
                   ),
                 ),
-            ];
-          },
-          child: Semantics(
-            button: true,
-            label:
-                '${widget.startText}: ${selected.isEmpty ? 'не выбран' : selected}',
-            child: Container(
-              height: 48,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainer,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: scheme.outlineVariant),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _isPeriod
-                        ? Icons.calendar_view_month_outlined
-                        : Icons.calendar_today_outlined,
-                    size: 18,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      selected.isEmpty ? widget.startText : selected,
-                      key: ValueKey('$_keyName-value'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: scheme.onSurface,
-                          ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.arrow_drop_down,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ],
               ),
             ),
           ),

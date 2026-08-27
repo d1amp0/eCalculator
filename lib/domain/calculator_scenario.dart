@@ -94,6 +94,14 @@ class CalculatorScenario {
 
   void edit(String id, {required double value, required double weight}) {
     _validate(value, weight);
+    final addedIndex = _added.indexWhere((mark) => mark.id == id);
+    if (addedIndex >= 0) {
+      _added[addedIndex] = _added[addedIndex].copyWith(
+        value: value,
+        weight: weight,
+      );
+      return;
+    }
     final source = _sourceById(id);
     if (source.value == value && source.weight == weight) {
       _edits.remove(id);
