@@ -1,11 +1,14 @@
-import 'package:flutter/material.dart';
 import 'package:ecalculator/components/error_message.dart';
 import 'package:ecalculator/components/more_menu.dart';
 import 'package:ecalculator/components/popover_button.dart';
+import 'package:ecalculator/domain/academic_calendar.dart';
+import 'package:ecalculator/domain/student_data.dart';
 import 'package:ecalculator/pages/mark_page.dart';
 import 'package:ecalculator/server/functions.dart';
-import 'package:ecalculator/domain/academic_calendar.dart';
+import 'package:ecalculator/services/app_session.dart';
+import 'package:ecalculator/services/demo/demo_data_source.dart';
 import 'package:ecalculator/storage/settings_storage.dart';
+import 'package:flutter/material.dart';
 
 class MarksPage extends StatefulWidget {
   const MarksPage({super.key});
@@ -19,199 +22,186 @@ class _MarksPageState extends State<MarksPage>
   @override
   bool get wantKeepAlive => true;
 
-  final yearController = TextEditingController(),
-      periodController = TextEditingController();
-  bool isTable = false, isDownloading = false;
-  Map<String, double> changeMarksMap = {};
-  Map<String, List<List<dynamic>>> marksMap = {};
-  late PopoverButton periodPopoverButton;
+  final yearController = TextEditingController();
+  final periodController = TextEditingController();
   final settings = SettingsStorage();
+  bool isLoading = false;
+  Map<String, double> averages = {};
+  SubjectMarks marksMap = {};
+  late final PopoverButton periodPopoverButton;
 
-  Color getColor(double value) {
-    switch (value) {
-      case >= 4.00:
-        return const Color.fromARGB(255, 3, 192, 60);
-      case >= 3.00:
-        return const Color.fromARGB(255, 255, 213, 0);
-      case >= 2.00:
-        return const Color.fromARGB(255, 246, 166, 0);
-      default:
-        return const Color.fromARGB(255, 220, 20, 60);
+  Future<void> _openTime() async {
+    if (appSession.isDemo) {
+      yearController.text = DemoDataSource.demoYear;
+      periodController.text = DemoDataSource.demoPeriod;
+      return;
     }
-  }
-
-  void saveTime() async {
-    await settings.writeString("year", yearController.text);
-    await settings.writeString("period", periodController.text);
-  }
-
-  Future<bool> openTime() async {
     yearController.text =
-        await settings.readString("year") ?? AcademicCalendar.currentYear();
-    periodController.text = await settings.readString("period") ??
+        await settings.readString('year') ?? AcademicCalendar.currentYear();
+    periodController.text = await settings.readString('period') ??
         AcademicCalendar.currentQuarter() ??
         '';
-    return true;
   }
 
-  void checkControllers(bool justOpened) async {
-    if (justOpened) await openTime();
-    if (yearController.text.isNotEmpty && periodController.text.isNotEmpty) {
-      setState(() {
-        isDownloading = true;
-        isTable = false;
-      });
-      String period = await eild(yearController.text + periodController.text);
+  Future<void> _load({required bool initial}) async {
+    if (initial) await _openTime();
+    if (yearController.text.isEmpty || periodController.text.isEmpty) return;
+    setState(() => isLoading = true);
+
+    try {
+      final period = await eild(yearController.text + periodController.text);
       if (!mounted) return;
-      if (period != "400") {
-        marksMap = await getMarksMap(period);
-        if (!mounted) return;
-        changeMarksMap = changeMarks(marksMap);
-        setState(() {
-          isTable = true;
-          isDownloading = false;
-        });
-        saveTime();
-      } else {
-        setState(() {
-          isDownloading = false;
-        });
+      if (period == '400') {
+        setState(() => isLoading = false);
         showErrorPeriod(context);
+        return;
       }
+      final loaded = await getMarksMap(period);
+      if (!mounted) return;
+      setState(() {
+        marksMap = loaded;
+        averages = changeMarks(loaded);
+        isLoading = false;
+      });
+      if (!appSession.isDemo) {
+        await settings.writeString('year', yearController.text);
+        await settings.writeString('period', periodController.text);
+      }
+    } on Object {
+      if (!mounted) return;
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось загрузить оценки.')),
+      );
     }
   }
 
   @override
   void initState() {
-    checkControllers(true);
+    super.initState();
     periodPopoverButton = PopoverButton(
       startText: 'Учебный период',
       controller: periodController,
-      checkControllers: checkControllers,
+      checkControllers: (_) => _load(initial: false),
     );
-    super.initState();
+    _load(initial: true);
+  }
+
+  @override
+  void dispose() {
+    yearController.dispose();
+    periodController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 10),
-            Row(
+      appBar: AppBar(
+        title: const Text('Калькулятор'),
+        actions: [MoreMenu(canLeave: true, popoverButton: periodPopoverButton)],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            child: Row(
               children: [
-                const SizedBox(width: 10),
-                SizedBox(
-                  width: 158,
-                  height: 48,
+                Expanded(
                   child: PopoverButton(
                     startText: 'Учебный год',
                     controller: yearController,
-                    checkControllers: checkControllers,
+                    checkControllers: (_) => _load(initial: false),
                   ),
                 ),
-                const SizedBox(width: 10),
-                SizedBox(width: 158, height: 48, child: periodPopoverButton),
-                const Spacer(),
-                MoreMenu(canLeave: true, popoverButton: periodPopoverButton),
+                const SizedBox(width: 8),
+                Expanded(child: periodPopoverButton),
               ],
             ),
-            const SizedBox(height: 20),
-            SizedBox(
-              height: isTable ? MediaQuery.of(context).size.height - 180 : 0,
-              child: isTable
-                  ? ListView(
-                      children: [
-                        DataTable(
-                          columns: const [
-                            DataColumn(label: Text('Предмет')),
-                            DataColumn(label: Text('Балл')),
-                            DataColumn(label: Text('Перейти')),
-                          ],
-                          rows: isTable
-                              ? [
-                                  for (var elem in changeMarksMap.entries)
-                                    DataRow(
-                                      cells: [
-                                        DataCell(
-                                          Text(
-                                            elem.key,
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              color: Theme.of(context)
-                                                  .textTheme
-                                                  .displayLarge
-                                                  ?.color,
-                                            ),
-                                          ),
-                                        ),
-                                        DataCell(
-                                          Text(
-                                            elem.value.toString(),
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              color: getColor(elem.value),
-                                            ),
-                                          ),
-                                        ),
-                                        DataCell(
-                                          IconButton(
-                                            onPressed: () => {
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder: (context) =>
-                                                      MarkPage(
-                                                    name: elem.key,
-                                                    markList:
-                                                        marksMap[elem.key],
-                                                  ),
-                                                ),
-                                              ),
-                                            },
-                                            icon: Icon(
-                                              Icons.arrow_right_alt,
-                                              size: 35,
-                                              color: Theme.of(context)
-                                                  .textTheme
-                                                  .displayLarge
-                                                  ?.color,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+          ),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: isLoading
+                  ? const Center(
+                      key: ValueKey('marks-loading'),
+                      child: CircularProgressIndicator(),
+                    )
+                  : averages.isEmpty
+                      ? const Center(
+                          key: ValueKey('marks-empty'),
+                          child: Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Text(
+                              'Нет оценок за выбранный период.',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        )
+                      : ListView.separated(
+                          key: const ValueKey('subjects-list'),
+                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+                          itemCount: averages.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final entry = averages.entries.elementAt(index);
+                            return Material(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainer,
+                              borderRadius: BorderRadius.circular(16),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => MarkPage(
+                                      name: entry.key,
+                                      markList: marksMap[entry.key] ?? const [],
                                     ),
-                                ]
-                              : [],
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            shape: BoxShape.rectangle,
-                            color: Theme.of(context).colorScheme.secondary,
-                          ),
-                          headingTextStyle: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color:
-                                Theme.of(context).textTheme.displayLarge?.color,
-                          ),
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 14,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          entry.key,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        entry.value.toStringAsFixed(2),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleLarge
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      const Icon(Icons.chevron_right),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                      ],
-                    )
-                  : null,
             ),
-            SizedBox(height: isDownloading ? 300 : 0),
-            Center(
-              child: isDownloading
-                  ? CircularProgressIndicator(
-                      backgroundColor: Colors.blue,
-                      color: Theme.of(context).colorScheme.secondary,
-                    )
-                  : null,
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

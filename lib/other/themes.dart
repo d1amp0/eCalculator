@@ -1,53 +1,79 @@
-import 'package:flutter/material.dart';
 import 'package:ecalculator/other/colors.dart' as colors;
+import 'package:flutter/material.dart';
 
-ThemeData defaultMode = ThemeData(
-  scaffoldBackgroundColor: colors.defaultPrimary,
-  disabledColor: colors.defaultVanish,
-  colorScheme: ColorScheme(
-    brightness: Brightness.light,
-    primary: colors.defaultPrimary,
-    onPrimary: Colors.white,
-    secondary: Colors.white,
-    onSecondary: Colors.black,
-    error: Colors.white,
-    onError: Colors.black,
-    surface: Colors.white,
-    onSurface: Colors.black,
-  ),
-  textTheme: const TextTheme(
-    displaySmall: TextStyle(color: Colors.white),
-    displayMedium: TextStyle(color: Colors.black),
-    displayLarge: TextStyle(color: Colors.black),
-  ),
+ThemeData defaultMode = _buildTheme(
+  brightness: Brightness.light,
+  scaffold: colors.defaultPrimary,
+  primary: colors.defaultPrimary,
+  surface: Colors.white,
+  disabled: colors.defaultVanish,
+  headerForeground: Colors.white,
+  primaryForeground: Colors.white,
 );
 
-ThemeData lightMode = ThemeData(
-  scaffoldBackgroundColor: colors.lightPrimary,
-  disabledColor: colors.lightVanish,
-  colorScheme: ColorScheme.light(
-    primary: colors.lightPrimary,
-    onPrimary: Colors.black,
-    secondary: Colors.white,
-  ),
-  textTheme: const TextTheme(
-    displaySmall: TextStyle(color: Colors.black),
-    displayMedium: TextStyle(color: Colors.white),
-    displayLarge: TextStyle(color: Colors.black),
-  ),
+ThemeData lightMode = _buildTheme(
+  brightness: Brightness.light,
+  scaffold: colors.lightPrimary,
+  primary: colors.lightPrimary,
+  surface: Colors.white,
+  disabled: colors.lightVanish,
+  headerForeground: Colors.black,
+  primaryForeground: Colors.black,
 );
 
-ThemeData darkMode = ThemeData(
-  scaffoldBackgroundColor: colors.blackPrimary,
-  disabledColor: colors.blackVanish,
-  colorScheme: ColorScheme.light(
-    primary: colors.blackPrimary,
-    onPrimary: Colors.black,
-    secondary: colors.blackSecondary,
-  ),
-  textTheme: const TextTheme(
-    displaySmall: TextStyle(color: Colors.white),
-    displayMedium: TextStyle(color: Colors.white),
-    displayLarge: TextStyle(color: Colors.white),
-  ),
+ThemeData darkMode = _buildTheme(
+  brightness: Brightness.dark,
+  scaffold: colors.blackPrimary,
+  primary: colors.defaultPrimary,
+  surface: colors.blackSecondary,
+  disabled: colors.blackVanish,
+  headerForeground: Colors.white,
+  primaryForeground: Colors.white,
 );
+
+ThemeData _buildTheme({
+  required Brightness brightness,
+  required Color scaffold,
+  required Color primary,
+  required Color surface,
+  required Color disabled,
+  required Color headerForeground,
+  required Color primaryForeground,
+}) {
+  final isDark = brightness == Brightness.dark;
+  final scheme = ColorScheme.fromSeed(
+    seedColor: primary,
+    brightness: brightness,
+  ).copyWith(
+    primary: primary,
+    onPrimary: primaryForeground,
+    secondary: surface,
+    onSecondary: isDark ? Colors.white : Colors.black,
+    surface: surface,
+    onSurface: isDark ? Colors.white : Colors.black,
+  );
+  final baseText = ThemeData(brightness: brightness).textTheme;
+
+  return ThemeData(
+    useMaterial3: true,
+    brightness: brightness,
+    scaffoldBackgroundColor: scaffold,
+    disabledColor: disabled,
+    colorScheme: scheme,
+    textTheme: baseText.copyWith(
+      displaySmall: TextStyle(color: headerForeground),
+      displayMedium: TextStyle(color: isDark ? Colors.white : Colors.black),
+      displayLarge: TextStyle(color: isDark ? Colors.white : Colors.black),
+    ),
+    appBarTheme: AppBarTheme(
+      backgroundColor: scaffold,
+      foregroundColor: headerForeground,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: scheme.surface,
+      surfaceTintColor: Colors.transparent,
+    ),
+  );
+}

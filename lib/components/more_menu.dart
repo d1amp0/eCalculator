@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ecalculator/components/popover_button.dart';
 import 'package:ecalculator/components/popup_menu.dart';
 import 'package:ecalculator/components/logout_dialog.dart';
+import 'package:ecalculator/services/app_session.dart';
 
 class MoreMenu extends StatefulWidget {
   final bool canLeave;
@@ -78,7 +79,7 @@ class _MoreMenuState extends State<MoreMenu> {
       });
     }
 
-    return PopupMenu(
+    final menu = PopupMenu(
       menuList: [
         PopupMenuItem(
           onTap: about,
@@ -112,6 +113,21 @@ class _MoreMenuState extends State<MoreMenu> {
               ),
             ),
           ),
+      ],
+    );
+    if (!appSession.isDemo) return menu;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Semantics(
+          label: 'Демонстрационный аккаунт',
+          child: const Chip(
+            avatar: Icon(Icons.science_outlined, size: 16),
+            label: Text('Демо'),
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+        menu,
       ],
     );
   }

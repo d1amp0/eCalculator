@@ -1,12 +1,13 @@
-import 'package:ecalculator/navigation/app_routes.dart';
-import 'package:ecalculator/services/eschool/eschool_session.dart';
+import 'package:ecalculator/pages/login_page.dart';
+import 'package:ecalculator/services/app_session.dart';
 import 'package:flutter/material.dart';
 
 Future<void> showLogoutDialog(
   BuildContext context, {
   Future<void> Function()? logout,
 }) {
-  final logoutAction = logout ?? eschoolSession.logout;
+  final wasDemo = appSession.isDemo;
+  final logoutAction = logout ?? appSession.exit;
   var isLoggingOut = false;
 
   return showDialog<void>(
@@ -15,10 +16,11 @@ Future<void> showLogoutDialog(
     builder: (dialogContext) => StatefulBuilder(
       builder: (dialogBuildContext, setDialogState) => AlertDialog(
         backgroundColor: Theme.of(dialogBuildContext).colorScheme.secondary,
-        title: const Text('Выйти из аккаунта?'),
-        content: const Text(
-          'Сохранённые данные входа eSchool будут удалены. '
-          'Настройки приложения останутся без изменений.',
+        title: Text(wasDemo ? 'Выйти из демо?' : 'Выйти из аккаунта?'),
+        content: Text(
+          wasDemo
+              ? 'Демо-сценарий будет сброшен. Сохранённый аккаунт eSchool не изменится.'
+              : 'Сохранённые данные входа eSchool будут удалены. Настройки приложения останутся без изменений.',
         ),
         actions: [
           TextButton(
@@ -35,9 +37,14 @@ Future<void> showLogoutDialog(
                       await logoutAction();
                       if (!dialogContext.mounted || !context.mounted) return;
                       Navigator.of(dialogContext).pop();
-                      Navigator.of(
-                        context,
-                      ).pushNamedAndRemoveUntil(loginRoute, (route) => false);
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute<void>(
+                          builder: (_) => LoginPage(
+                            skipSessionRestore: wasDemo,
+                          ),
+                        ),
+                        (route) => false,
+                      );
                     } on Object {
                       if (!dialogContext.mounted || !context.mounted) return;
                       setDialogState(() => isLoggingOut = false);

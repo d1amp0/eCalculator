@@ -8,6 +8,7 @@ import 'package:ecalculator/pages/add_task_page.dart';
 import 'package:ecalculator/pages/task_page.dart';
 import 'package:ecalculator/server/functions.dart';
 import 'package:intl/intl.dart';
+import 'package:ecalculator/services/app_session.dart';
 
 class HomeworkPage extends StatefulWidget {
   const HomeworkPage({super.key});
@@ -128,6 +129,7 @@ class _HomeworkPageState extends State<HomeworkPage> {
   }
 
   Future<void> openDB() async {
+    if (appSession.isDemo) return;
     List tasks = await DatabaseHelper.instance.getTasks();
     for (var task in tasks) {
       if (task.time <

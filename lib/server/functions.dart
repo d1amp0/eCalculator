@@ -1,7 +1,7 @@
-import 'dart:convert';
-
 import 'package:ecalculator/domain/mark_calculator.dart';
+import 'package:ecalculator/domain/student_data.dart';
 import 'package:ecalculator/services/eschool/eschool_session.dart';
+import 'package:ecalculator/services/student_data_source.dart';
 
 Future<LoginResult> loginTry(
   String username,
@@ -15,28 +15,16 @@ Future<LoginResult> loginTry(
   );
 }
 
-Future<Map<String, List<List<dynamic>>>> getMarksMap(String eild) async {
-  final client = eschoolSession.client..period = eild;
-  final marks = await client.marksApp();
-  final changedMarks = <String, List<List<dynamic>>>{};
-
-  for (final mark in marks) {
-    final subject = _decodeLegacyText(mark[2].toString());
-    changedMarks.putIfAbsent(subject, () => <List<dynamic>>[]).add([
-      mark[0],
-      mark[1],
-      mark[3].toString().substring(0, 10),
-    ]);
-  }
-  return changedMarks;
-}
+Future<SubjectMarks> getMarksMap(String periodId) =>
+    studentDataSession.source.marks(periodId);
 
 Future<String> eild(String name) async {
-  final value = await eschoolSession.client.getEild(name);
-  return value.toString();
+  final value = await studentDataSession.source.periodId(name);
+  return value ?? '400';
 }
 
-Future<List<String>> academicYears() => eschoolSession.client.academicYears();
+Future<List<String>> academicYears() =>
+    studentDataSession.source.academicYears();
 
 String deleteColors(String line) {
   var result = line;
@@ -67,22 +55,13 @@ String extractText(String line) {
   return result.length > 200 ? '${result.substring(0, 197)}...' : result;
 }
 
-Future<List<dynamic>> homeworkServer() {
-  final now = DateTime.now();
-  return eschoolSession.client.homeworks(
-    d1: now.subtract(const Duration(days: 7)).millisecondsSinceEpoch,
-    d2: now.add(const Duration(days: 14)).millisecondsSinceEpoch,
-  );
-}
+Future<List<dynamic>> homeworkServer() => studentDataSession.source.homework();
 
-Map<String, double> changeMarks(Map<String, List<List<dynamic>>> marksMap) {
+Map<String, double> changeMarks(SubjectMarks marksMap) {
   final averages = <String, double>{};
   for (final entry in marksMap.entries) {
     final marks = entry.value.map(
-      (mark) => WeightedMark(
-        (mark[0] as num).toDouble(),
-        (mark[1] as num).toDouble(),
-      ),
+      (mark) => WeightedMark(mark.value, mark.weight),
     );
     final average = MarkCalculator.weightedAverage(marks);
     if (average != null) {
@@ -90,29 +69,4 @@ Map<String, double> changeMarks(Map<String, List<List<dynamic>>> marksMap) {
     }
   }
   return averages;
-}
-
-double getScore(List<List<dynamic>>? markList) {
-  if (markList == null) return 0;
-  return markList.fold<double>(
-    0,
-    (sum, mark) =>
-        sum + (mark[0] as num).toDouble() * (mark[1] as num).toDouble(),
-  );
-}
-
-double getCoefficient(List<List<dynamic>>? markList) {
-  if (markList == null) return 0;
-  return markList.fold<double>(
-    0,
-    (sum, mark) => sum + (mark[1] as num).toDouble(),
-  );
-}
-
-String _decodeLegacyText(String value) {
-  try {
-    return utf8.decode(latin1.encode(value));
-  } on Object {
-    return value;
-  }
 }
