@@ -15,7 +15,8 @@ Future<void> showLogoutDialog(
     barrierDismissible: false,
     builder: (dialogContext) => StatefulBuilder(
       builder: (dialogBuildContext, setDialogState) => AlertDialog(
-        backgroundColor: Theme.of(dialogBuildContext).colorScheme.secondary,
+        backgroundColor: Theme.of(dialogBuildContext).colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
         title: Text(wasDemo ? 'Выйти из демо?' : 'Выйти из аккаунта?'),
         content: Text(
           wasDemo
@@ -58,6 +59,9 @@ Future<void> showLogoutDialog(
                       );
                     }
                   },
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(dialogBuildContext).colorScheme.error,
+            ),
             child: isLoggingOut
                 ? const SizedBox.square(
                     dimension: 18,

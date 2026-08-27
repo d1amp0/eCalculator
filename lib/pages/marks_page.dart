@@ -101,7 +101,7 @@ class _MarksPageState extends State<MarksPage>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Калькулятор'),
-        actions: [MoreMenu(canLeave: true, popoverButton: periodPopoverButton)],
+        actions: const [MoreMenu(canLeave: true)],
       ),
       body: Column(
         children: [

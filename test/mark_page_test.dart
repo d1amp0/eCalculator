@@ -118,6 +118,7 @@ void main() {
 
   testWidgets('all scenario states use identical tile geometry',
       (tester) async {
+    final semantics = tester.ensureSemantics();
     const source = StudentMark(
       id: 'source',
       value: 3,
@@ -176,6 +177,91 @@ void main() {
         MarkButton.tileSize,
       );
     }
+    expect(find.byKey(const ValueKey('mark-state-source')), findsNothing);
+    expect(find.byKey(const ValueKey('mark-state-edited')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mark-state-added')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mark-state-excluded')), findsOneWidget);
+    expect(find.text('Новая'), findsNothing);
+    expect(find.text('Изменена'), findsNothing);
+    expect(find.text('Исключена'), findsNothing);
+    expect(
+      find.bySemanticsLabel('Оценка 4, коэффициент 2, изменена'),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel('Оценка 5, коэффициент 1.5, новая'),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel('Оценка 2, коэффициент 1, исключена'),
+      findsOneWidget,
+    );
+    semantics.dispose();
+  });
+
+  testWidgets('fifty marks use compact stable tiles without overflow',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final manyMarks = List.generate(
+      50,
+      (index) => StudentMark(
+        id: 'many-$index',
+        value: (index % 5 + 1).toDouble(),
+        weight: index.isEven ? 1 : 2,
+        date: '2026-01-01',
+      ),
+    );
+
+    await tester.pumpWidget(
+      _app(MarkPage(name: 'Алгебра', markList: manyMarks)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(MarkButton), findsNWidgets(50));
+    for (final index in [0, 24, 49]) {
+      expect(
+        tester.getSize(find.byKey(ValueKey('mark-tile-many-$index'))),
+        MarkButton.tileSize,
+      );
+    }
+    expect(MarkButton.tileSize.height, lessThan(80));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('quick weights are 0.5, 1 and 2 and custom weight still works',
+      (tester) async {
+    await tester
+        .pumpWidget(_app(const MarkPage(name: 'Алгебра', markList: marks)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('add-mark-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('quick-weight-0.5')), findsOneWidget);
+    expect(find.byKey(const ValueKey('quick-weight-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('quick-weight-2')), findsOneWidget);
+    expect(find.byKey(const ValueKey('quick-weight-1.5')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('quick-weight-0.5')));
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('mark-weight-field')))
+          .controller!
+          .text,
+      '0.5',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('mark-weight-field')),
+      '1.75',
+    );
+    await tester.tap(find.byKey(const ValueKey('save-mark-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('×1.75'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('edit exclude and add do not reflow existing mark tiles',
@@ -270,28 +356,84 @@ void main() {
           theme.extension<AppThemeColors>()!.scaffoldForeground;
       expect(_text(tester, 'marks-heading').style!.color, scaffoldForeground);
       expect(
-        _text(tester, 'result-label').style!.color,
-        theme.colorScheme.onSecondaryContainer,
-      );
-      expect(
         _text(tester, 'original-average').style!.color,
         theme.colorScheme.onSecondaryContainer,
       );
-      expect(
-        _text(tester, 'result-caption').style!.color,
-        theme.colorScheme.onSecondaryContainer,
-      );
+      expect(find.text('Средний балл'), findsNothing);
+      expect(find.text('Предварительный результат'), findsNothing);
+      expect(find.text('Текущие данные из журнала'), findsNothing);
       expect(
         _text(tester, 'mark-weight-real-1').style!.color,
         theme.colorScheme.onSurface,
       );
 
-      await tester.tap(find.byKey(const ValueKey('add-mark-button')));
+      await tester.tap(find.byKey(const ValueKey('mark-real-1')));
       await tester.pumpAndSettle();
       expect(
         _text(tester, 'mark-editor-title').style!.color,
         theme.colorScheme.onSurface,
       );
+      expect(
+        _text(tester, 'mark-editor-subtitle').style!.color,
+        theme.colorScheme.onSurfaceVariant,
+      );
+      final save = tester.widget<FilledButton>(
+        find.byKey(const ValueKey('save-mark-button')),
+      );
+      expect(
+        save.style!.backgroundColor!.resolve({}),
+        theme.colorScheme.primary,
+      );
+      expect(
+        save.style!.foregroundColor!.resolve({}),
+        theme.colorScheme.onPrimary,
+      );
+      final exclude = tester.widget<TextButton>(
+        find.byKey(const ValueKey('exclude-mark-button')),
+      );
+      expect(
+        exclude.style!.foregroundColor!.resolve({}),
+        theme.colorScheme.error,
+      );
+      final cancel = tester.widget<TextButton>(
+        find.byKey(const ValueKey('cancel-mark-editor-button')),
+      );
+      expect(
+        cancel.style!.foregroundColor!.resolve({}),
+        theme.colorScheme.onSurfaceVariant,
+      );
+      final selectedQuickWeight = tester.widget<ChoiceChip>(
+        find.byKey(const ValueKey('quick-weight-1')),
+      );
+      expect(selectedQuickWeight.selected, isTrue);
+      expect(
+        selectedQuickWeight.selectedColor,
+        theme.colorScheme.secondaryContainer,
+      );
+      final selectedGrade = tester.widget<ChoiceChip>(
+        find.widgetWithText(ChoiceChip, '3'),
+      );
+      expect(selectedGrade.selectedColor, theme.colorScheme.primaryContainer);
+      expect(
+        selectedGrade.labelStyle!.color,
+        theme.colorScheme.onPrimaryContainer,
+      );
+      final modifier = tester.widget<SegmentedButton<double>>(
+        find.byType(SegmentedButton<double>),
+      );
+      expect(
+        modifier.style!.foregroundColor!.resolve({WidgetState.selected}),
+        theme.colorScheme.onSecondaryContainer,
+      );
+      final weightField = tester.widget<TextField>(
+        find.byKey(const ValueKey('mark-weight-field')),
+      );
+      expect(
+        weightField.decoration!.fillColor,
+        theme.colorScheme.surfaceContainerLow,
+      );
+
+      await tester.tap(find.widgetWithText(ChoiceChip, '4'));
       await tester.tap(find.byKey(const ValueKey('save-mark-button')));
       await tester.pumpAndSettle();
 
@@ -306,6 +448,18 @@ void main() {
       final arrow = find.byIcon(Icons.arrow_forward);
       expect(IconTheme.of(tester.element(arrow)).color,
           theme.colorScheme.onSecondaryContainer);
+
+      await tester.tap(find.byKey(const ValueKey('mark-real-1')));
+      await tester.pumpAndSettle();
+      final restore = tester.widget<TextButton>(
+        find.byKey(const ValueKey('restore-mark-button')),
+      );
+      expect(
+        restore.style!.foregroundColor!.resolve({}),
+        theme.colorScheme.onSurface,
+      );
+      await tester.tap(find.byKey(const ValueKey('cancel-mark-editor-button')));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     }
   });

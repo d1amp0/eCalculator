@@ -4,7 +4,9 @@ import 'package:ecalculator/pages/marks_page.dart';
 import 'package:ecalculator/pages/settings_page.dart';
 
 class MainPage extends StatefulWidget {
-  const MainPage({super.key});
+  const MainPage({super.key, this.pages});
+
+  final List<Widget>? pages;
 
   @override
   State<MainPage> createState() => _MainPageState();
@@ -15,7 +17,7 @@ class _MainPageState extends State<MainPage>
   @override
   bool get wantKeepAlive => true;
 
-  static const List<Widget> pageList = [
+  static const List<Widget> defaultPages = [
     MarksPage(),
     HomeworkPage(),
     SettingsPage(),
@@ -29,47 +31,58 @@ class _MainPageState extends State<MainPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      body: IndexedStack(index: _pageIndex, children: pageList),
+      body: IndexedStack(
+        index: _pageIndex,
+        children: widget.pages ?? defaultPages,
+      ),
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
-          backgroundColor: Theme.of(context).colorScheme.secondary,
-          // indicatorShape: const CircleBorder(),
-          indicatorColor: Colors.transparent,
-          overlayColor: WidgetStateProperty.resolveWith<Color>(
-            (_) => Colors.transparent,
+          backgroundColor: scheme.surface,
+          indicatorColor: scheme.secondaryContainer,
+          surfaceTintColor: Colors.transparent,
+          elevation: 3,
+          labelTextStyle: WidgetStateProperty.resolveWith(
+            (states) => Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: states.contains(WidgetState.selected)
+                      ? scheme.onSecondaryContainer
+                      : scheme.onSurfaceVariant,
+                  fontWeight: states.contains(WidgetState.selected)
+                      ? FontWeight.w700
+                      : FontWeight.w500,
+                ),
+          ),
+          iconTheme: WidgetStateProperty.resolveWith(
+            (states) => IconThemeData(
+              color: states.contains(WidgetState.selected)
+                  ? scheme.onSecondaryContainer
+                  : scheme.onSurfaceVariant,
+              size: 24,
+            ),
           ),
         ),
         child: NavigationBar(
+          key: const ValueKey('main-navigation'),
           onDestinationSelected: _onNavTap,
-          height: 50,
-          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-          indicatorColor: Colors.transparent,
+          height: 64,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           selectedIndex: _pageIndex,
-          destinations: <Widget>[
+          destinations: const <Widget>[
             NavigationDestination(
-              icon: Icon(
-                Icons.calculate,
-                color: Theme.of(context).textTheme.displayLarge?.color,
-                size: 24,
-              ),
-              label: '',
+              icon: Icon(Icons.calculate_outlined),
+              selectedIcon: Icon(Icons.calculate),
+              label: 'Оценки',
             ),
             NavigationDestination(
-              icon: Icon(
-                Icons.school,
-                color: Theme.of(context).textTheme.displayLarge?.color,
-                size: 24,
-              ),
-              label: '',
+              icon: Icon(Icons.assignment_outlined),
+              selectedIcon: Icon(Icons.assignment),
+              label: 'Задания',
             ),
             NavigationDestination(
-              icon: Icon(
-                Icons.settings,
-                color: Theme.of(context).textTheme.displayLarge?.color,
-                size: 24,
-              ),
-              label: '',
+              icon: Icon(Icons.settings_outlined),
+              selectedIcon: Icon(Icons.settings),
+              label: 'Настройки',
             ),
           ],
         ),

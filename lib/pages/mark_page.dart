@@ -105,7 +105,7 @@ class _MarkPageState extends State<MarkPage> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
           _ResultArea(scenario: scenario),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           Row(
             children: [
               Text(
@@ -119,7 +119,7 @@ class _MarkPageState extends State<MarkPage> {
               PlusButton(onPressed: _addMark),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           if (scenario.marks.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 24),
@@ -130,14 +130,14 @@ class _MarkPageState extends State<MarkPage> {
             )
           else
             Wrap(
-              spacing: 10,
-              runSpacing: 10,
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 for (final item in scenario.marks)
                   MarkButton(item: item, onPressed: () => _openMark(item)),
               ],
             ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 180),
             child: scenario.hasChanges
@@ -177,18 +177,10 @@ class _ResultArea extends StatelessWidget {
         child: DefaultTextStyle.merge(
           style: TextStyle(color: foreground),
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Средний балл',
-                  key: const ValueKey('result-label'),
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: foreground,
-                      ),
-                ),
-                const SizedBox(height: 8),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 180),
                   child: scenario.hasChanges
@@ -257,16 +249,6 @@ class _ResultArea extends StatelessWidget {
                     ],
                   ),
                 ],
-                const SizedBox(height: 8),
-                Text(
-                  scenario.hasChanges
-                      ? 'Предварительный результат · изменения только на этом экране'
-                      : 'Текущие данные из журнала',
-                  key: const ValueKey('result-caption'),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: foreground,
-                      ),
-                ),
               ],
             ),
           ),
@@ -486,6 +468,10 @@ class _MarkEditorSheetState extends State<_MarkEditorSheet> {
                   const SizedBox(height: 4),
                   Text(
                     'Дата: ${widget.initial!.date} · только для сценария',
+                    key: const ValueKey('mark-editor-subtitle'),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
                 const SizedBox(height: 20),
@@ -503,6 +489,14 @@ class _MarkEditorSheetState extends State<_MarkEditorSheet> {
                       ChoiceChip(
                         label: Text('$mark'),
                         selected: _baseValue == mark,
+                        backgroundColor: scheme.surfaceContainerLow,
+                        selectedColor: scheme.primaryContainer,
+                        labelStyle: TextStyle(
+                          color: _baseValue == mark
+                              ? scheme.onPrimaryContainer
+                              : scheme.onSurface,
+                        ),
+                        side: BorderSide(color: scheme.outlineVariant),
                         onSelected: (_) => setState(() => _baseValue = mark),
                       ),
                   ],
@@ -516,6 +510,21 @@ class _MarkEditorSheetState extends State<_MarkEditorSheet> {
                       ButtonSegment(value: 0.2, label: Text('+')),
                     ],
                     selected: {_modifier},
+                    style: ButtonStyle(
+                      foregroundColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? scheme.onSecondaryContainer
+                            : scheme.onSurface,
+                      ),
+                      backgroundColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? scheme.secondaryContainer
+                            : scheme.surface,
+                      ),
+                      side: WidgetStatePropertyAll(
+                        BorderSide(color: scheme.outline),
+                      ),
+                    ),
                     onSelectionChanged: (selection) =>
                         setState(() => _modifier = selection.first),
                   ),
@@ -530,10 +539,22 @@ class _MarkEditorSheetState extends State<_MarkEditorSheet> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    for (final quickWeight in const [1.0, 1.5, 2.0]) ...[
-                      ActionChip(
+                    for (final quickWeight in const [0.5, 1.0, 2.0]) ...[
+                      ChoiceChip(
+                        key: ValueKey(
+                          'quick-weight-${formatWeight(quickWeight)}',
+                        ),
                         label: Text(formatWeight(quickWeight)),
-                        onPressed: () {
+                        selected: _weight == quickWeight,
+                        backgroundColor: scheme.surfaceContainerLow,
+                        selectedColor: scheme.secondaryContainer,
+                        labelStyle: TextStyle(
+                          color: _weight == quickWeight
+                              ? scheme.onSecondaryContainer
+                              : scheme.onSurface,
+                        ),
+                        side: BorderSide(color: scheme.outlineVariant),
+                        onSelected: (_) {
                           _weightController.text = formatWeight(quickWeight);
                           setState(() {});
                         },
@@ -548,9 +569,15 @@ class _MarkEditorSheetState extends State<_MarkEditorSheet> {
                           decimal: true,
                         ),
                         onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
+                        style: TextStyle(color: scheme.onSurface),
+                        decoration: InputDecoration(
                           labelText: 'Другой',
                           isDense: true,
+                          filled: true,
+                          fillColor: scheme.surfaceContainerLow,
+                          labelStyle: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ),
@@ -560,6 +587,16 @@ class _MarkEditorSheetState extends State<_MarkEditorSheet> {
                 FilledButton(
                   key: const ValueKey('save-mark-button'),
                   onPressed: valid ? () => _return(_EditorAction.save) : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: scheme.primary,
+                    foregroundColor: scheme.onPrimary,
+                    disabledBackgroundColor: scheme.onSurface.withValues(
+                      alpha: 0.12,
+                    ),
+                    disabledForegroundColor: scheme.onSurface.withValues(
+                      alpha: 0.38,
+                    ),
+                  ),
                   child:
                       Text(widget.initial == null ? 'Добавить' : 'Сохранить'),
                 ),
@@ -567,18 +604,26 @@ class _MarkEditorSheetState extends State<_MarkEditorSheet> {
                   TextButton.icon(
                     key: const ValueKey('exclude-mark-button'),
                     onPressed: () => _return(_EditorAction.exclude),
+                    style: TextButton.styleFrom(foregroundColor: scheme.error),
                     icon: const Icon(Icons.remove_circle_outline),
                     label: const Text('Исключить из расчёта'),
                   ),
                 if (widget.allowRestore)
                   TextButton.icon(
+                    key: const ValueKey('restore-mark-button'),
                     onPressed: () => _return(_EditorAction.restore),
+                    style: TextButton.styleFrom(
+                      foregroundColor: scheme.onSurface,
+                    ),
                     icon: const Icon(Icons.undo),
                     label: const Text('Вернуть исходную оценку'),
                   ),
                 TextButton(
                   key: const ValueKey('cancel-mark-editor-button'),
                   onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    foregroundColor: scheme.onSurfaceVariant,
+                  ),
                   child: const Text('Отмена'),
                 ),
               ],
