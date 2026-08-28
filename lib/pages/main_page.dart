@@ -75,13 +75,13 @@ class _MainPageState extends State<MainPage>
               label: 'Калькулятор',
             ),
             NavigationDestination(
-              icon: Icon(Icons.assignment_outlined),
-              selectedIcon: Icon(Icons.assignment),
+              icon: Icon(Icons.checklist_outlined),
+              selectedIcon: Icon(Icons.checklist_rounded),
               label: 'Задания',
             ),
             NavigationDestination(
-              icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings),
+              icon: Icon(Icons.tune_outlined),
+              selectedIcon: Icon(Icons.tune_rounded),
               label: 'Настройки',
             ),
           ],

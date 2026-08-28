@@ -1,247 +1,210 @@
-import 'package:flutter/material.dart';
 import 'package:ecalculator/components/more_menu.dart';
 import 'package:ecalculator/other/database_helper.dart';
 import 'package:ecalculator/other/task.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+typedef TaskSaver = Future<void> Function(Task task);
+typedef TaskDatePicker = Future<DateTime?> Function(BuildContext context);
+
 class AddTaskPage extends StatefulWidget {
-  final Function function;
-  const AddTaskPage({super.key, required this.function});
+  const AddTaskPage({
+    super.key,
+    required this.function,
+    this.saveTask,
+    this.datePicker,
+  });
+
+  final ValueChanged<List<dynamic>> function;
+  final TaskSaver? saveTask;
+  final TaskDatePicker? datePicker;
 
   @override
   State<AddTaskPage> createState() => _AddTaskPageState();
 }
 
 class _AddTaskPageState extends State<AddTaskPage> {
-  TextEditingController subjectController = TextEditingController(),
-      taskController = TextEditingController();
-  String subject = '', dateText = '', task = '';
-  int dateInt = 0;
-  bool isDisabled = true;
+  final _subjectController = TextEditingController();
+  final _taskController = TextEditingController();
+  DateTime? _selectedDate;
+  var _isSaving = false;
 
-  void checkFields(String? value) {
-    bool condition = subjectController.text.isNotEmpty &&
-        taskController.text.isNotEmpty &&
-        dateInt != 0;
-    setState(() {
-      if (condition) {
-        isDisabled = false;
-      } else {
-        isDisabled = true;
-      }
-    });
-  }
+  bool get _isValid =>
+      _subjectController.text.trim().isNotEmpty &&
+      _taskController.text.trim().isNotEmpty &&
+      _selectedDate != null;
 
-  Future<void> selectDate() async {
-    DateTime? selected = await showDatePicker(
+  void _fieldsChanged() => setState(() {});
+
+  Future<DateTime?> _defaultDatePicker(BuildContext context) {
+    final now = DateTime.now();
+    return showDatePicker(
       context: context,
       locale: const Locale('ru'),
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now().add(const Duration(days: -7)),
-      lastDate: DateTime.now().add(const Duration(days: 14)),
+      initialDate: now,
+      firstDate: now.subtract(const Duration(days: 7)),
+      lastDate: now.add(const Duration(days: 14)),
     );
-    if (selected != null) {
-      setState(() {
-        dateText = DateFormat('dd.MM.yyyy').format(selected);
-        dateInt = selected.toUtc().millisecondsSinceEpoch;
-      });
+  }
+
+  Future<void> _selectDate() async {
+    final selected = await (widget.datePicker ?? _defaultDatePicker)(context);
+    if (selected == null || !mounted) return;
+    setState(() => _selectedDate = selected);
+  }
+
+  Future<void> _submit() async {
+    if (!_isValid || _isSaving) return;
+    setState(() => _isSaving = true);
+    final task = Task(
+      subject: _subjectController.text.trim(),
+      info: _taskController.text.trim(),
+      time: _selectedDate!.toUtc().millisecondsSinceEpoch,
+    );
+    try {
+      if (widget.saveTask case final saveTask?) {
+        await saveTask(task);
+      } else {
+        await DatabaseHelper.instance.add(task);
+      }
+      if (!mounted) return;
+      widget.function([task.time, task.subject, task.info]);
+      Navigator.pop(context);
+    } on Object {
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось добавить задание')),
+      );
     }
   }
 
-  void goDatabase() async {
-    await DatabaseHelper.instance.add(
-      Task(
-        subject: subjectController.text,
-        info: taskController.text,
-        time: dateInt,
-      ),
-    );
-    widget.function([dateInt, subjectController.text, taskController.text]);
-    if (!mounted) return;
-    Navigator.pop(context);
+  @override
+  void dispose() {
+    _subjectController.dispose();
+    _taskController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.pop(context);
-                  },
-                  child: Icon(
-                    Icons.arrow_back_sharp,
-                    color: Theme.of(context).textTheme.displaySmall?.color,
-                    size: 30,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  "Добавить д/з",
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.displaySmall?.color,
-                    fontSize: 32,
-                  ),
-                ),
-                const Spacer(),
-                const MoreMenu(canLeave: true),
-              ],
+      appBar: AppBar(
+        title: const Text('Добавить задание'),
+        actions: const [MoreMenu(canLeave: true)],
+      ),
+      body: ListView(
+        key: const ValueKey('add-task-form'),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        children: [
+          TextField(
+            key: const ValueKey('task-subject-field'),
+            controller: _subjectController,
+            onChanged: (_) => _fieldsChanged(),
+            textInputAction: TextInputAction.next,
+            decoration: const InputDecoration(
+              labelText: 'Предмет',
+              prefixIcon: Icon(Icons.school_outlined),
+              border: OutlineInputBorder(),
+              filled: true,
             ),
-            Divider(
-              height: 5,
-              thickness: 1,
-              color: Theme.of(context).textTheme.displaySmall?.color,
-            ),
-            Padding(
-              padding: const EdgeInsets.only(
-                left: 20.0,
-                top: 20.0,
-                right: 20.0,
-              ),
-              child: TextField(
-                onChanged: (value) => checkFields(value),
-                controller: subjectController,
-                style: TextStyle(
-                  color: Theme.of(context).textTheme.displayLarge?.color,
-                ),
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderSide: BorderSide(
-                      color: Theme.of(context).colorScheme.secondary,
-                    ),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  prefixIcon: Icon(
-                    Icons.school,
-                    color: Theme.of(context).textTheme.displayLarge?.color,
-                  ),
-                  hintText: "Предмет",
-                  hintStyle: const TextStyle(
-                    color: Colors.grey,
-                    fontWeight: FontWeight.w400,
-                  ),
-                  fillColor: Theme.of(context).colorScheme.secondary,
-                  filled: true,
-                ),
-              ),
-            ),
-            GestureDetector(
-              onTap: selectDate,
-              child: Padding(
-                padding: const EdgeInsets.only(
-                  left: 20.0,
-                  top: 20.0,
-                  right: 20.0,
-                ),
-                child: Container(
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.secondary,
-                    borderRadius: BorderRadius.circular(10.0),
+          ),
+          const SizedBox(height: 16),
+          Material(
+            color: scheme.surfaceContainer,
+            borderRadius: BorderRadius.circular(12),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              key: const ValueKey('task-date-control'),
+              onTap: _isSaving ? null : _selectDate,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 64),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
                   ),
                   child: Row(
                     children: [
-                      const SizedBox(width: 10),
                       Icon(
-                        Icons.date_range,
-                        color: Theme.of(context).textTheme.displayLarge?.color,
+                        Icons.calendar_today_outlined,
+                        color: scheme.onSurfaceVariant,
                       ),
-                      const SizedBox(width: 5),
-                      Text(
-                        dateText.isEmpty ? "Выберите дату" : dateText,
-                        style: TextStyle(
-                          fontSize: 18,
-                          color:
-                              Theme.of(context).textTheme.displayLarge?.color,
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Дата',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelMedium
+                                  ?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                            Text(
+                              _selectedDate == null
+                                  ? 'Выбрать дату'
+                                  : DateFormat(
+                                      'd MMMM y',
+                                      'ru',
+                                    ).format(_selectedDate!),
+                              key: const ValueKey('task-selected-date'),
+                              style: TextStyle(color: scheme.onSurface),
+                            ),
+                          ],
                         ),
                       ),
-                      const Spacer(),
-                      Icon(
-                        dateText.isEmpty ? Icons.close : Icons.check,
-                        color: Theme.of(context).textTheme.displayLarge?.color,
-                      ),
-                      const SizedBox(width: 10),
+                      const Icon(Icons.chevron_right_rounded),
                     ],
                   ),
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.only(
-                left: 20.0,
-                top: 20.0,
-                right: 20.0,
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            key: const ValueKey('task-text-field'),
+            controller: _taskController,
+            onChanged: (_) => _fieldsChanged(),
+            minLines: 5,
+            maxLines: null,
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            decoration: const InputDecoration(
+              labelText: 'Задание',
+              alignLabelWithHint: true,
+              prefixIcon: Padding(
+                padding: EdgeInsets.only(bottom: 96),
+                child: Icon(Icons.edit_note_outlined),
               ),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height - 300,
-                ),
-                child: TextField(
-                  onChanged: (value) => checkFields(value),
-                  controller: taskController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.displayLarge?.color,
-                  ),
-                  decoration: InputDecoration(
-                    border: OutlineInputBorder(
-                      borderSide: BorderSide(
-                        color: Theme.of(context).colorScheme.secondary,
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    prefixIcon: Icon(
-                      Icons.short_text,
-                      color: Theme.of(context).textTheme.displayLarge?.color,
-                    ),
-                    hintText: "Текст задания",
-                    hintStyle: const TextStyle(
-                      color: Colors.grey,
-                      fontWeight: FontWeight.w400,
-                    ),
-                    fillColor: Theme.of(context).colorScheme.secondary,
-                    filled: true,
-                  ),
-                  maxLines: null,
-                ),
+              border: OutlineInputBorder(),
+              filled: true,
+            ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton(
+            key: const ValueKey('add-task-submit'),
+            onPressed: _isValid && !_isSaving ? _submit : null,
+            style: FilledButton.styleFrom(
+              backgroundColor: scheme.surface,
+              foregroundColor: scheme.onSurface,
+              disabledBackgroundColor: scheme.surface.withValues(alpha: 0.55),
+              disabledForegroundColor: scheme.onSurface.withValues(
+                alpha: 0.38,
               ),
             ),
-            const Spacer(),
-            GestureDetector(
-              onTap: goDatabase,
-              child: Padding(
-                padding: const EdgeInsets.only(
-                  top: 20,
-                  left: 75,
-                  right: 75,
-                  bottom: 20,
-                ),
-                child: isDisabled
-                    ? null
-                    : Container(
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.secondary,
-                          borderRadius: BorderRadius.circular(10.0),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'Готово',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                        ),
-                      ),
-              ),
-            ),
-          ],
-        ),
+            child: _isSaving
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Добавить'),
+          ),
+        ],
       ),
     );
   }

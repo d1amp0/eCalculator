@@ -1,339 +1,302 @@
-import 'dart:convert';
-
-import 'package:flutter/material.dart';
-import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:ecalculator/components/more_menu.dart';
+import 'package:ecalculator/models/homework_item.dart';
+import 'package:ecalculator/other/app_theme_colors.dart';
 import 'package:ecalculator/other/database_helper.dart';
 import 'package:ecalculator/pages/add_task_page.dart';
 import 'package:ecalculator/pages/task_page.dart';
 import 'package:ecalculator/server/functions.dart';
-import 'package:intl/intl.dart';
 import 'package:ecalculator/services/app_session.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+typedef HomeworkItemsLoader = Future<List<HomeworkItem>> Function();
 
 class HomeworkPage extends StatefulWidget {
-  const HomeworkPage({super.key});
+  const HomeworkPage({
+    super.key,
+    this.itemsLoader,
+    this.onItemTap,
+    this.now,
+  });
+
+  final HomeworkItemsLoader? itemsLoader;
+  final ValueChanged<HomeworkItem>? onItemTap;
+  final DateTime Function()? now;
 
   @override
   State<HomeworkPage> createState() => _HomeworkPageState();
 }
 
 class _HomeworkPageState extends State<HomeworkPage> {
-  Map<int, List> homeworks = {};
-  List<int> dates = [];
-  List rawHomeworks = [];
-  bool readyToBuild = false;
+  var _items = <HomeworkItem>[];
+  var _isLoading = true;
+  Object? _loadError;
 
-  Future<Map<int, List>> homework() async {
-    Map<int, List> homeworksDate = {};
-    List waiting = await homeworkServer();
-    for (var elem in waiting) {
-      rawHomeworks.add(elem);
-    }
-    for (var elem in rawHomeworks) {
-      if (homeworksDate.containsKey(elem[2])) {
-        if (elem[4]) {
-          homeworksDate[elem[2]]?.add([elem[1], elem[3], elem[3], true]);
+  Future<List<HomeworkItem>> _loadProductionItems() async {
+    final items = <HomeworkItem>[];
+    if (!appSession.isDemo) {
+      final tasks = await DatabaseHelper.instance.getTasks();
+      final oldestAllowed = DateTime.now().millisecondsSinceEpoch -
+          const Duration(days: 7).inMilliseconds;
+      for (final task in tasks) {
+        if (task.time < oldestAllowed) {
+          await DatabaseHelper.instance.remove(task.info);
         } else {
-          homeworksDate[elem[2]]?.add([
-            utf8.decode(latin1.encode(elem[1])),
-            elem[3] != null
-                ? deleteColors(utf8.decode(latin1.encode(elem[3])))
-                : '',
-            elem[3] != null
-                ? extractText(utf8.decode(latin1.encode(elem[3])))
-                : '',
-            false,
-          ]);
-        }
-      } else {
-        if (elem[4]) {
-          homeworksDate.addAll({
-            elem[2]: [
-              [elem[1], elem[3], elem[3], true],
-            ],
-          });
-        } else {
-          homeworksDate.addAll({
-            elem[2]: [
-              [
-                utf8.decode(latin1.encode(elem[1])),
-                elem[3] != null
-                    ? deleteColors(utf8.decode(latin1.encode(elem[3])))
-                    : '',
-                elem[3] != null
-                    ? extractText(utf8.decode(latin1.encode(elem[3])))
-                    : '',
-                false,
-              ],
-            ],
-          });
+          items.add(
+            HomeworkItem(
+              subject: task.subject,
+              content: task.info,
+              preview: task.info,
+              date: DateTime.fromMillisecondsSinceEpoch(task.time),
+              isLocal: true,
+            ),
+          );
         }
       }
     }
-    return homeworksDate;
+
+    final rawItems = await homeworkServer();
+    items.addAll(
+      rawItems.map((raw) => HomeworkItem.fromRaw(raw as List<dynamic>)),
+    );
+    return items;
   }
 
-  Future<void> fillHomeworks() async {
-    homeworks = await homework();
-    dates = homeworks.keys.toList();
-    dates.sort();
+  Future<void> _load() async {
     setState(() {
-      readyToBuild = true;
+      _isLoading = true;
+      _loadError = null;
     });
-  }
-
-  void addToHomeworks(List list) {
-    if (homeworks.containsKey(list[0])) {
+    try {
+      final loadedItems = await (widget.itemsLoader ?? _loadProductionItems)();
+      if (!mounted) return;
+      final items = [...loadedItems];
+      items.sort((a, b) => a.date.compareTo(b.date));
       setState(() {
-        homeworks[list[0]]?.add([list[1], list[2], list[2], true]);
-        refreshDates();
+        _items = items;
+        _isLoading = false;
       });
-    } else {
+    } on Object catch (error) {
+      if (!mounted) return;
       setState(() {
-        homeworks.addAll({
-          list[0]: [
-            [list[1], list[2], list[2], true],
-          ],
-        });
-        refreshDates();
+        _loadError = error;
+        _isLoading = false;
       });
     }
   }
 
-  void deleteFromHomeworks(String text) {
+  void _addItem(List<dynamic> values) {
+    final item = HomeworkItem(
+      date: DateTime.fromMillisecondsSinceEpoch(values[0] as int),
+      subject: values[1].toString(),
+      content: values[2].toString(),
+      preview: values[2].toString(),
+      isLocal: true,
+    );
     setState(() {
-      int keyDelete = 0;
-      List listDelete = [];
-      for (var key in homeworks.keys) {
-        for (var elem in homeworks[key]!) {
-          if (elem.contains(text)) {
-            keyDelete = key;
-            listDelete = elem;
-            break;
-          }
-        }
-      }
-      homeworks[keyDelete]?.remove(listDelete);
-      if (homeworks[keyDelete]!.isEmpty) {
-        homeworks.remove(keyDelete);
-      }
-      refreshDates();
+      _items = [..._items, item]..sort((a, b) => a.date.compareTo(b.date));
     });
   }
 
-  void refreshDates() {
-    setState(() {
-      dates = homeworks.keys.toList();
-      dates.sort();
-    });
+  void _removeItem(HomeworkItem item) {
+    setState(
+      () => _items = _items.where((value) => !identical(value, item)).toList(),
+    );
   }
 
-  Future<void> openDB() async {
-    if (appSession.isDemo) return;
-    List tasks = await DatabaseHelper.instance.getTasks();
-    for (var task in tasks) {
-      if (task.time <
-          DateTime.now().millisecondsSinceEpoch - 7 * 24 * 60 * 60 * 1000) {
-        await DatabaseHelper.instance.remove(task.info);
-      } else {
-        rawHomeworks.add([0000000, task.subject, task.time, task.info, true]);
-      }
+  void _openItem(HomeworkItem item) {
+    if (widget.onItemTap case final onItemTap?) {
+      onItemTap(item);
+      return;
     }
-  }
-
-  Future<void> homeworkStuff() async {
-    await openDB();
-    fillHomeworks();
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => TaskPage(item: item, onDeleted: _removeItem),
+      ),
+    );
   }
 
   @override
   void initState() {
-    homeworkStuff();
     super.initState();
+    _load();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => AddTaskPage(function: addToHomeworks),
-            ),
-          );
-        },
-        backgroundColor: Theme.of(context).colorScheme.secondary,
-        foregroundColor: Theme.of(context).textTheme.displayLarge?.color,
-        child: const Icon(Icons.add_task, size: 30),
+      appBar: AppBar(
+        title: const Text('Задания'),
+        actions: const [MoreMenu(canLeave: true)],
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const Spacer(flex: 3),
-                Text(
-                  "Задания",
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.displaySmall?.color,
-                    fontSize: 32,
-                  ),
-                ),
-                const Spacer(flex: 2),
-                const MoreMenu(canLeave: true),
-              ],
+      floatingActionButton: FloatingActionButton(
+        key: const ValueKey('add-task-fab'),
+        tooltip: 'Добавить задание',
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => AddTaskPage(
+              function: _addItem,
+              saveTask: appSession.isDemo ? (_) async {} : null,
             ),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: MediaQuery.of(context).size.height - 180,
-              child: readyToBuild
-                  ? ListView.builder(
-                      itemCount: dates.length,
-                      itemBuilder: (context, indexDate) {
-                        return Column(
-                          children: [
-                            Center(
-                              child: Container(
-                                height: 25,
-                                width: 85,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(10),
-                                  shape: BoxShape.rectangle,
-                                  color:
-                                      Theme.of(context).colorScheme.secondary,
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    DateFormat('dd.MM.yyyy')
-                                        .format(
-                                          DateTime.fromMillisecondsSinceEpoch(
-                                            dates[indexDate],
-                                          ),
-                                        )
-                                        .toString(),
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Theme.of(context)
-                                          .textTheme
-                                          .displayLarge
-                                          ?.color,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              height: homeworks[dates[indexDate]]!
-                                      .length
-                                      .toDouble() *
-                                  110,
-                              child: ListView.builder(
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: homeworks[dates[indexDate]]?.length,
-                                itemBuilder: (context, index) {
-                                  return Column(
-                                    children: [
-                                      GestureDetector(
-                                        child: Center(
-                                          child: Container(
-                                            height: 100,
-                                            width: MediaQuery.of(context)
-                                                    .size
-                                                    .width -
-                                                30,
-                                            decoration: BoxDecoration(
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                              shape: BoxShape.rectangle,
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .secondary,
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                const SizedBox(height: 3),
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                    right: 10,
-                                                    left: 10,
-                                                  ),
-                                                  child: Text(
-                                                    homeworks[dates[
-                                                                indexDate]]![
-                                                            index][0]
-                                                        .toString(),
-                                                    style: TextStyle(
-                                                      fontSize: 24,
-                                                      color: Theme.of(context)
-                                                          .textTheme
-                                                          .displayLarge
-                                                          ?.color,
-                                                    ),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                ),
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                    right: 10,
-                                                    left: 10,
-                                                  ),
-                                                  child: SizedBox(
-                                                    height: 54,
-                                                    child: HtmlWidget(
-                                                      homeworks[dates[
-                                                              indexDate]]![
-                                                          index][2],
-                                                      textStyle: TextStyle(
-                                                        fontSize: 12,
-                                                        color: Theme.of(context)
-                                                            .textTheme
-                                                            .displayLarge
-                                                            ?.color,
-                                                        overflow:
-                                                            TextOverflow.fade,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                        onTap: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) => TaskPage(
-                                                task: homeworks[
-                                                    dates[indexDate]]![index],
-                                                function: deleteFromHomeworks,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                      const SizedBox(height: 10),
-                                    ],
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    )
-                  : null,
+          ),
+        ),
+        child: const Icon(Icons.add_rounded),
+      ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return Center(
+        child: CircularProgressIndicator(
+          key: const ValueKey('homework-loading'),
+          color: AppThemeColors.scaffoldText(context),
+        ),
+      );
+    }
+    if (_loadError != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Не удалось загрузить задания',
+              style: TextStyle(color: AppThemeColors.scaffoldText(context)),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _load,
+              style: TextButton.styleFrom(
+                foregroundColor: AppThemeColors.scaffoldText(context),
+              ),
+              child: const Text('Повторить'),
             ),
           ],
+        ),
+      );
+    }
+    if (_items.isEmpty) {
+      return Center(
+        child: Text(
+          'Нет заданий',
+          key: const ValueKey('homework-empty'),
+          style: TextStyle(color: AppThemeColors.scaffoldText(context)),
+        ),
+      );
+    }
+
+    final groups = <DateTime, List<HomeworkItem>>{};
+    for (final item in _items) {
+      final date = DateTime(item.date.year, item.date.month, item.date.day);
+      groups.putIfAbsent(date, () => []).add(item);
+    }
+    final rows = <Widget>[];
+    var itemIndex = 0;
+    for (final entry in groups.entries) {
+      rows.add(_DateHeader(date: entry.key, now: widget.now?.call()));
+      for (final item in entry.value) {
+        rows.add(
+          _TaskTile(
+            key: ValueKey('homework-task-${itemIndex++}'),
+            item: item,
+            onTap: () => _openItem(item),
+          ),
+        );
+      }
+    }
+
+    return ListView(
+      key: const ValueKey('homework-list'),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+      children: rows,
+    );
+  }
+}
+
+class _DateHeader extends StatelessWidget {
+  const _DateHeader({required this.date, DateTime? now}) : _now = now;
+
+  final DateTime date;
+  final DateTime? _now;
+
+  String _label() {
+    final now = _now ?? DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (date == today) return 'Сегодня';
+    if (date == today.add(const Duration(days: 1))) return 'Завтра';
+    return DateFormat(
+      date.year == today.year ? 'd MMMM' : 'd MMMM y',
+      'ru',
+    ).format(date);
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
+        child: Text(
+          _label(),
+          key: ValueKey('homework-date-${date.millisecondsSinceEpoch}'),
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: AppThemeColors.scaffoldText(
+                  context,
+                ).withValues(alpha: 0.78),
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+      );
+}
+
+class _TaskTile extends StatelessWidget {
+  const _TaskTile({super.key, required this.item, required this.onTap});
+
+  final HomeworkItem item;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final source = item.isLocal ? 'Добавлено вручную' : 'eSchool';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Card(
+        margin: EdgeInsets.zero,
+        color: scheme.surfaceContainer,
+        surfaceTintColor: Colors.transparent,
+        clipBehavior: Clip.antiAlias,
+        child: Semantics(
+          button: true,
+          label: '${item.subject}. $source',
+          child: ListTile(
+            onTap: onTap,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 4,
+            ),
+            leading: Tooltip(
+              message: source,
+              child: Icon(
+                item.isLocal ? Icons.edit_note_outlined : Icons.school_outlined,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            title: Text(
+              item.subject,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: item.preview.trim().isEmpty
+                ? null
+                : Text(
+                    item.preview.trim(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+            trailing: const Icon(Icons.chevron_right_rounded),
+          ),
         ),
       ),
     );

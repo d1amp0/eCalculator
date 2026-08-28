@@ -35,6 +35,8 @@ void main() {
       expect(find.text('Оценки'), findsNothing);
       expect(find.text('Задания'), findsOneWidget);
       expect(find.text('Настройки'), findsOneWidget);
+      expect(find.byIcon(Icons.checklist_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.tune_outlined), findsOneWidget);
       expect(find.text('Marks page'), findsOneWidget);
       var navigation = tester.widget<NavigationBar>(
         find.byKey(const ValueKey('main-navigation')),
@@ -66,6 +68,8 @@ void main() {
       );
       expect(navigation.selectedIndex, 1);
       expect(find.text('Homework page'), findsOneWidget);
+      expect(find.byIcon(Icons.checklist_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.tune_outlined), findsOneWidget);
       expect(tester.takeException(), isNull);
     }
   });
