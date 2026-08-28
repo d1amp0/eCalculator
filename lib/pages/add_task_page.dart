@@ -187,7 +187,7 @@ class _AddTaskPageState extends State<AddTaskPage> {
             ),
           ),
           const SizedBox(height: 24),
-          FilledButton(
+          FilledButton.tonal(
             key: const ValueKey('add-task-submit'),
             onPressed: _isValid && !_isSaving ? _submit : null,
             child: _isSaving

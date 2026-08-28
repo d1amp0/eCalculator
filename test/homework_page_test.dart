@@ -154,6 +154,115 @@ void main() {
     expect(find.text('Физика'), findsOneWidget);
   });
 
+  testWidgets('shows local homework while eSchool is still loading', (
+    tester,
+  ) async {
+    final local = Completer<List<HomeworkItem>>();
+    final remote = Completer<List<HomeworkItem>>();
+    await tester.pumpWidget(
+      _app(
+        HomeworkPage(
+          localItemsLoader: () => local.future,
+          remoteItemsLoader: () => remote.future,
+          now: () => today,
+        ),
+      ),
+    );
+
+    local.complete([_item('Алгебра', today, local: true, localId: 1)]);
+    await tester.pump();
+
+    expect(find.text('Алгебра'), findsOneWidget);
+    expect(find.byKey(const ValueKey('homework-loading')), findsNothing);
+
+    remote.complete([]);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('keeps a task added while initial eSchool load is pending', (
+    tester,
+  ) async {
+    final local = Completer<List<HomeworkItem>>();
+    final remote = Completer<List<HomeworkItem>>();
+    await tester.pumpWidget(
+      _app(
+        HomeworkPage(
+          localItemsLoader: () => local.future,
+          remoteItemsLoader: () => remote.future,
+          saveTask: (_) async => 42,
+          taskDatePicker: (_) async => today,
+          now: () => today,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('add-task-fab')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('task-subject-field')),
+      'Физика',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('task-text-field')),
+      'Решить задачу',
+    );
+    await tester.tap(find.byKey(const ValueKey('task-date-control')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('add-task-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Физика'), findsOneWidget);
+
+    local.complete([_item('Алгебра', today, local: true, localId: 41)]);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Алгебра'), findsOneWidget);
+    expect(find.text('Физика'), findsOneWidget);
+
+    remote.complete([]);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Алгебра'), findsOneWidget);
+    expect(find.text('Физика'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('does not resurrect a task deleted while eSchool is loading', (
+    tester,
+  ) async {
+    final local = Completer<List<HomeworkItem>>();
+    final remote = Completer<List<HomeworkItem>>();
+    final algebra = _item('Алгебра', today, local: true, localId: 1);
+    final physics = _item('Физика', today, local: true, localId: 2);
+    await tester.pumpWidget(
+      _app(
+        HomeworkPage(
+          localItemsLoader: () => local.future,
+          remoteItemsLoader: () => remote.future,
+          deleteTask: (_) async {},
+          now: () => today,
+        ),
+      ),
+    );
+
+    local.complete([algebra, physics]);
+    await tester.pump();
+    expect(find.text('Алгебра'), findsOneWidget);
+    expect(find.text('Физика'), findsOneWidget);
+
+    await tester.tap(find.text('Алгебра'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('delete-task')));
+    await tester.pumpAndSettle();
+
+    remote.complete([]);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Алгебра'), findsNothing);
+    expect(find.text('Физика'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('keeps local homework visible when eSchool loading fails', (
     tester,
   ) async {

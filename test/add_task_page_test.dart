@@ -153,7 +153,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('submit uses the default FilledButton colors in every theme', (
+  testWidgets('submit resolves to distinct semantic colors in every theme', (
     tester,
   ) async {
     for (final theme in [defaultMode, lightMode, darkMode]) {
@@ -168,12 +168,21 @@ void main() {
           theme: theme,
         ),
       );
+      await tester.pumpAndSettle();
 
-      final button = tester.widget<FilledButton>(
-        find.byKey(const ValueKey('add-task-submit')),
-      );
-      expect(button.style, isNull);
+      final button = tester.widget<FilledButton>(_submitFinder);
       expect(button.onPressed, isNull);
+      final disabledColors = _renderedSubmitColors(tester);
+      expect(disabledColors.background.a, closeTo(0.12, 0.01));
+      expect(disabledColors.foreground.a, closeTo(0.38, 0.01));
+      expect(
+        disabledColors.background.withValues(alpha: 1),
+        theme.colorScheme.onSurface.withValues(alpha: 1),
+      );
+      expect(
+        disabledColors.foreground.withValues(alpha: 1),
+        theme.colorScheme.onSurface.withValues(alpha: 1),
+      );
 
       await tester.enterText(
         find.byKey(const ValueKey('task-subject-field')),
@@ -186,14 +195,42 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('task-date-control')));
       await tester.pumpAndSettle();
 
-      final enabledButton = tester.widget<FilledButton>(
-        find.byKey(const ValueKey('add-task-submit')),
-      );
-      expect(enabledButton.style, isNull);
+      final enabledButton = tester.widget<FilledButton>(_submitFinder);
       expect(enabledButton.onPressed, isNotNull);
+      final enabledColors = _renderedSubmitColors(tester);
+      expect(enabledColors.background, theme.colorScheme.secondaryContainer);
+      expect(enabledColors.foreground, theme.colorScheme.onSecondaryContainer);
+      expect(
+        _contrastRatio(enabledColors.background, enabledColors.foreground),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(enabledColors.background, isNot(theme.scaffoldBackgroundColor));
+      expect(enabledColors.background, isNot(disabledColors.background));
       expect(tester.takeException(), isNull);
     }
   });
+}
+
+Finder get _submitFinder => find.byKey(const ValueKey('add-task-submit'));
+
+({Color background, Color foreground}) _renderedSubmitColors(
+  WidgetTester tester,
+) {
+  final material = tester.widget<Material>(
+    find.descendant(of: _submitFinder, matching: find.byType(Material)),
+  );
+  final foreground = DefaultTextStyle.of(
+    tester.element(find.text('Добавить')),
+  ).style.color;
+  return (background: material.color!, foreground: foreground!);
+}
+
+double _contrastRatio(Color first, Color second) {
+  final lighter =
+      first.computeLuminance() > second.computeLuminance() ? first : second;
+  final darker = identical(lighter, first) ? second : first;
+  return (lighter.computeLuminance() + 0.05) /
+      (darker.computeLuminance() + 0.05);
 }
 
 Widget _app(Widget home, {ThemeData? theme}) => MaterialApp(

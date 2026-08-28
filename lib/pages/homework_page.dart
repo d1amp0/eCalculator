@@ -20,6 +20,8 @@ class HomeworkPage extends StatefulWidget {
     this.remoteItemsLoader,
     this.databaseHelper,
     this.deleteTask,
+    this.saveTask,
+    this.taskDatePicker,
     this.onItemTap,
     this.now,
   });
@@ -29,6 +31,8 @@ class HomeworkPage extends StatefulWidget {
   final HomeworkItemsLoader? remoteItemsLoader;
   final DatabaseHelper? databaseHelper;
   final TaskDelete? deleteTask;
+  final TaskSaver? saveTask;
+  final TaskDatePicker? taskDatePicker;
   final ValueChanged<HomeworkItem>? onItemTap;
   final DateTime Function()? now;
 
@@ -40,7 +44,14 @@ class _HomeworkPageState extends State<HomeworkPage> {
   var _localItems = <HomeworkItem>[];
   var _remoteItems = <HomeworkItem>[];
   var _items = <HomeworkItem>[];
-  var _isLoading = true;
+  final _addedLocalItemsById = <int, HomeworkItem>{};
+  final _addedLocalItemsWithoutId = <HomeworkItem>[];
+  final _deletedLocalIds = <int>{};
+  final _deletedLocalItemsWithoutId = Set<HomeworkItem>.identity();
+  var _localLoadGeneration = 0;
+  var _remoteLoadGeneration = 0;
+  var _isLoadingLocal = false;
+  var _isLoadingRemote = false;
   var _isRetryingLocal = false;
   var _isRetryingRemote = false;
   Object? _localError;
@@ -97,51 +108,95 @@ class _HomeworkPageState extends State<HomeworkPage> {
   }
 
   Future<void> _load() async {
+    await Future.wait([
+      _loadLocal(),
+      _loadRemote(),
+    ]);
+  }
+
+  Future<void> _loadLocal({bool isRetry = false}) async {
+    final generation = ++_localLoadGeneration;
     setState(() {
-      _isLoading = true;
+      _isLoadingLocal = true;
+      _isRetryingLocal = isRetry;
       _localError = null;
+    });
+
+    final result = await _attempt(_localLoader);
+    if (!mounted || generation != _localLoadGeneration) return;
+    setState(() {
+      if (result.items case final items?) {
+        _localItems = _mergeLocalSnapshot(items);
+      }
+      _localError = result.error;
+      _rebuildItems();
+      _isLoadingLocal = false;
+      _isRetryingLocal = false;
+    });
+  }
+
+  Future<void> _loadRemote({bool isRetry = false}) async {
+    final generation = ++_remoteLoadGeneration;
+    setState(() {
+      _isLoadingRemote = true;
+      _isRetryingRemote = isRetry;
       _remoteError = null;
     });
 
-    final results = await Future.wait([
-      _attempt(_localLoader),
-      _attempt(_remoteLoader),
-    ]);
-    if (!mounted) return;
+    final result = await _attempt(_remoteLoader);
+    if (!mounted || generation != _remoteLoadGeneration) return;
     setState(() {
-      _localItems = results[0].items ?? <HomeworkItem>[];
-      _remoteItems = results[1].items ?? <HomeworkItem>[];
-      _localError = results[0].error;
-      _remoteError = results[1].error;
+      if (result.items case final items?) _remoteItems = items;
+      _remoteError = result.error;
       _rebuildItems();
-      _isLoading = false;
+      _isLoadingRemote = false;
+      _isRetryingRemote = false;
     });
   }
 
   Future<void> _retryRemote() async {
     if (_isRetryingRemote) return;
-    setState(() => _isRetryingRemote = true);
-    final result = await _attempt(_remoteLoader);
-    if (!mounted) return;
-    setState(() {
-      if (result.items case final items?) _remoteItems = items;
-      _remoteError = result.error;
-      _rebuildItems();
-      _isRetryingRemote = false;
-    });
+    await _loadRemote(isRetry: true);
   }
 
   Future<void> _retryLocal() async {
     if (_isRetryingLocal) return;
-    setState(() => _isRetryingLocal = true);
-    final result = await _attempt(_localLoader);
-    if (!mounted) return;
-    setState(() {
-      if (result.items case final items?) _localItems = items;
-      _localError = result.error;
-      _rebuildItems();
-      _isRetryingLocal = false;
-    });
+    await _loadLocal(isRetry: true);
+  }
+
+  List<HomeworkItem> _mergeLocalSnapshot(List<HomeworkItem> snapshot) {
+    final merged = <HomeworkItem>[];
+    final seenIds = <int>{};
+    final seenWithoutId = Set<HomeworkItem>.identity();
+
+    void addIfCurrent(HomeworkItem item) {
+      final id = item.localId;
+      if (id != null) {
+        if (_deletedLocalIds.contains(id) ||
+            _addedLocalItemsById.containsKey(id) ||
+            !seenIds.add(id)) {
+          return;
+        }
+      } else {
+        if (_deletedLocalItemsWithoutId.contains(item) ||
+            _addedLocalItemsWithoutId.any((added) => identical(added, item)) ||
+            !seenWithoutId.add(item)) {
+          return;
+        }
+      }
+      merged.add(item);
+    }
+
+    for (final item in snapshot) {
+      addIfCurrent(item);
+    }
+    for (final item in _addedLocalItemsById.values) {
+      if (!_deletedLocalIds.contains(item.localId)) merged.add(item);
+    }
+    for (final item in _addedLocalItemsWithoutId) {
+      if (!_deletedLocalItemsWithoutId.contains(item)) merged.add(item);
+    }
+    return merged;
   }
 
   void _rebuildItems() {
@@ -156,15 +211,35 @@ class _HomeworkPageState extends State<HomeworkPage> {
   void _addItem(Task task) {
     final item = HomeworkItem.fromTask(task);
     setState(() {
-      _localItems = [..._localItems, item];
+      final id = item.localId;
+      if (id != null) {
+        _deletedLocalIds.remove(id);
+        _addedLocalItemsById[id] = item;
+      } else {
+        _deletedLocalItemsWithoutId.remove(item);
+        _addedLocalItemsWithoutId.add(item);
+      }
+      _localItems = _mergeLocalSnapshot(_localItems);
       _rebuildItems();
     });
   }
 
   void _removeItem(HomeworkItem item) {
     setState(() {
-      _localItems =
-          _localItems.where((value) => !identical(value, item)).toList();
+      final id = item.localId;
+      if (id != null) {
+        _deletedLocalIds.add(id);
+        _addedLocalItemsById.remove(id);
+      } else {
+        _deletedLocalItemsWithoutId.add(item);
+        _addedLocalItemsWithoutId.removeWhere(
+          (added) => identical(added, item),
+        );
+      }
+      _localItems = _localItems.where((value) {
+        if (id != null) return value.localId != id;
+        return !identical(value, item);
+      }).toList();
       _remoteItems =
           _remoteItems.where((value) => !identical(value, item)).toList();
       _rebuildItems();
@@ -210,8 +285,9 @@ class _HomeworkPageState extends State<HomeworkPage> {
           MaterialPageRoute<void>(
             builder: (_) => AddTaskPage(
               function: _addItem,
-              saveTask:
-                  appSession.isDemo ? (_) async => null : _databaseHelper.add,
+              saveTask: widget.saveTask ??
+                  (appSession.isDemo ? (_) async => null : _databaseHelper.add),
+              datePicker: widget.taskDatePicker,
             ),
           ),
         ),
@@ -222,7 +298,7 @@ class _HomeworkPageState extends State<HomeworkPage> {
   }
 
   Widget _buildBody() {
-    if (_isLoading) {
+    if (_items.isEmpty && (_isLoadingLocal || _isLoadingRemote)) {
       return Center(
         child: CircularProgressIndicator(
           key: const ValueKey('homework-loading'),
@@ -230,7 +306,7 @@ class _HomeworkPageState extends State<HomeworkPage> {
         ),
       );
     }
-    if (_remoteError != null && _localItems.isEmpty) {
+    if (_remoteError != null && _localItems.isEmpty && !_isLoadingLocal) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
