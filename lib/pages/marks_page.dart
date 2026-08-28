@@ -12,7 +12,22 @@ import 'package:ecalculator/storage/settings_storage.dart';
 import 'package:flutter/material.dart';
 
 class MarksPage extends StatefulWidget {
-  const MarksPage({super.key});
+  const MarksPage({
+    super.key,
+    this.initialYear,
+    this.initialPeriod,
+    this.yearOptionsLoader,
+    this.periodOptionsLoader,
+    this.periodIdLoader,
+    this.marksLoader,
+  }) : assert((initialYear == null) == (initialPeriod == null));
+
+  final String? initialYear;
+  final String? initialPeriod;
+  final Future<List<String>> Function()? yearOptionsLoader;
+  final Future<List<String>> Function()? periodOptionsLoader;
+  final Future<String> Function(String selection)? periodIdLoader;
+  final Future<SubjectMarks> Function(String periodId)? marksLoader;
 
   @override
   State<MarksPage> createState() => _MarksPageState();
@@ -29,48 +44,72 @@ class _MarksPageState extends State<MarksPage>
   bool isLoading = false;
   Map<String, double> averages = {};
   SubjectMarks marksMap = {};
-  late final PopoverButton periodPopoverButton;
+  int _loadGeneration = 0;
 
-  Future<void> _openTime() async {
+  bool _isCurrent(int generation) => mounted && generation == _loadGeneration;
+
+  Future<void> _openTime(int generation) async {
+    if (widget.initialYear != null && widget.initialPeriod != null) {
+      yearController.text = widget.initialYear!;
+      periodController.text = widget.initialPeriod!;
+      return;
+    }
     if (appSession.isDemo) {
       yearController.text = DemoDataSource.demoYear;
       periodController.text = DemoDataSource.demoPeriod;
       return;
     }
-    yearController.text =
+    final year =
         await settings.readString('year') ?? AcademicCalendar.currentYear();
-    periodController.text = await settings.readString('period') ??
+    if (!_isCurrent(generation)) return;
+    final period = await settings.readString('period') ??
         AcademicCalendar.currentQuarter() ??
         '';
+    if (!_isCurrent(generation)) return;
+    yearController.text = year;
+    periodController.text = period;
   }
 
   Future<void> _load({required bool initial}) async {
-    if (initial) await _openTime();
-    if (yearController.text.isEmpty || periodController.text.isEmpty) return;
-    setState(() => isLoading = true);
-
+    final generation = ++_loadGeneration;
     try {
-      final period = await eild(yearController.text + periodController.text);
-      if (!mounted) return;
+      if (initial) await _openTime(generation);
+      if (!_isCurrent(generation)) return;
+      final year = yearController.text;
+      final periodName = periodController.text;
+      if (year.isEmpty || periodName.isEmpty) {
+        setState(() => isLoading = false);
+        return;
+      }
+      setState(() => isLoading = true);
+
+      final resolvePeriod = widget.periodIdLoader ?? eild;
+      final loadMarks = widget.marksLoader ?? getMarksMap;
+      final period = await resolvePeriod(year + periodName);
+      if (!_isCurrent(generation)) return;
       if (period == '400') {
         setState(() => isLoading = false);
+        if (!mounted) return;
         showErrorPeriod(context);
         return;
       }
-      final loaded = await getMarksMap(period);
-      if (!mounted) return;
+      final loaded = await loadMarks(period);
+      if (!_isCurrent(generation)) return;
       setState(() {
         marksMap = loaded;
         averages = changeMarks(loaded);
         isLoading = false;
       });
       if (!appSession.isDemo) {
-        await settings.writeString('year', yearController.text);
-        await settings.writeString('period', periodController.text);
+        await settings.writeString('year', year);
+        if (!_isCurrent(generation)) return;
+        await settings.writeString('period', periodName);
+        if (!_isCurrent(generation)) return;
       }
     } on Object {
-      if (!mounted) return;
+      if (!_isCurrent(generation)) return;
       setState(() => isLoading = false);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Не удалось загрузить оценки.')),
       );
@@ -80,11 +119,6 @@ class _MarksPageState extends State<MarksPage>
   @override
   void initState() {
     super.initState();
-    periodPopoverButton = PopoverButton(
-      startText: 'Учебный период',
-      controller: periodController,
-      checkControllers: (_) => _load(initial: false),
-    );
     _load(initial: true);
   }
 
@@ -114,10 +148,18 @@ class _MarksPageState extends State<MarksPage>
                     startText: 'Учебный год',
                     controller: yearController,
                     checkControllers: (_) => _load(initial: false),
+                    optionsLoader: widget.yearOptionsLoader,
                   ),
                 ),
                 const SizedBox(width: 8),
-                Expanded(child: periodPopoverButton),
+                Expanded(
+                  child: PopoverButton(
+                    startText: 'Учебный период',
+                    controller: periodController,
+                    checkControllers: (_) => _load(initial: false),
+                    optionsLoader: widget.periodOptionsLoader,
+                  ),
+                ),
               ],
             ),
           ),

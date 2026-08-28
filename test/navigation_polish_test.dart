@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:ecalculator/components/more_menu.dart';
 import 'package:ecalculator/components/popover_button.dart';
 import 'package:ecalculator/other/themes.dart';
 import 'package:ecalculator/pages/main_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   testWidgets('bottom navigation shows three labels and changes selection',
@@ -179,6 +182,212 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('period options scroll and select on a short viewport',
+      (tester) async {
+    tester.view.physicalSize = const Size(640, 480);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = TextEditingController(text: '1 четверть');
+    addTearDown(controller.dispose);
+    const options = [
+      '1 четверть',
+      '2 четверть',
+      '3 четверть',
+      '4 четверть',
+      'Учебный год',
+    ];
+
+    await tester.pumpWidget(
+      _selectorApp(
+        PopoverButton(
+          startText: 'Учебный период',
+          controller: controller,
+          checkControllers: (_) {},
+          optionsLoader: () async => options,
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('period-selector')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    final lastOption = find.byKey(
+      const ValueKey('period-selector-option-Учебный год'),
+    );
+    await tester.scrollUntilVisible(
+      lastOption,
+      80,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.drag(
+      find.byKey(const ValueKey('period-selector-options-list')),
+      const Offset(0, -80),
+    );
+    await tester.pumpAndSettle();
+    expect(lastOption, findsOneWidget);
+    await tester.tap(lastOption);
+    await tester.pumpAndSettle();
+
+    expect(controller.text, 'Учебный год');
+    expect(find.byKey(const ValueKey('period-selector-sheet')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('long year list scrolls and selects on a short viewport',
+      (tester) async {
+    tester.view.physicalSize = const Size(640, 480);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = TextEditingController(text: '2026/2027');
+    addTearDown(controller.dispose);
+    final options = List.generate(
+      12,
+      (index) => '${2026 - index}/${2027 - index}',
+    );
+
+    await tester.pumpWidget(
+      _selectorApp(
+        PopoverButton(
+          startText: 'Учебный год',
+          controller: controller,
+          checkControllers: (_) {},
+          optionsLoader: () async => options,
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('year-selector')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    final lastOption = find.byKey(
+      ValueKey('year-selector-option-${options.last}'),
+    );
+    await tester.scrollUntilVisible(
+      lastOption,
+      100,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(lastOption);
+    await tester.pumpAndSettle();
+
+    expect(controller.text, options.last);
+    expect(find.byKey(const ValueKey('year-selector-sheet')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('open selector sheet updates when async options arrive',
+      (tester) async {
+    final controller = TextEditingController(text: '2026/2027');
+    final completer = Completer<List<String>>();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      _selectorApp(
+        PopoverButton(
+          startText: 'Учебный год',
+          controller: controller,
+          checkControllers: (_) {},
+          optionsLoader: () => completer.future,
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('year-selector')));
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    completer.complete(['2026/2027', '2025/2026']);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('year-selector-option-2025/2026')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('period options refresh from current stored period type',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'period_type': 0});
+    final controller = TextEditingController(text: '1 четверть');
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      _selectorApp(
+        PopoverButton(
+          startText: 'Учебный период',
+          controller: controller,
+          checkControllers: (_) {},
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('period-selector')));
+    await tester.pumpAndSettle();
+    expect(find.text('1 четверть'), findsWidgets);
+    expect(find.text('1 семестр'), findsNothing);
+    await tester.tapAt(const Offset(4, 4));
+    await tester.pumpAndSettle();
+
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setInt('period_type', 2);
+    await tester.tap(find.byKey(const ValueKey('period-selector')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 семестр'), findsOneWidget);
+    expect(find.text('2 семестр'), findsOneWidget);
+    expect(find.text('1 четверть'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('dismissing selector while options load is disposal safe',
+      (tester) async {
+    final controller = TextEditingController(text: '2026/2027');
+    final completer = Completer<List<String>>();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      _selectorApp(
+        PopoverButton(
+          startText: 'Учебный год',
+          controller: controller,
+          checkControllers: (_) {},
+          optionsLoader: () => completer.future,
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('year-selector')));
+    await tester.pump();
+    await tester.tapAt(const Offset(4, 4));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('year-selector-sheet')), findsNothing);
+
+    completer.complete(['2026/2027']);
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('empty selector result has a compact readable state',
+      (tester) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      _selectorApp(
+        PopoverButton(
+          startText: 'Учебный год',
+          controller: controller,
+          checkControllers: (_) {},
+          optionsLoader: () async => const [],
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('year-selector')));
+    await tester.pumpAndSettle();
+    expect(find.text('Нет вариантов'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('overflow menu opens About and keeps logout wired',
       (tester) async {
     await tester.pumpWidget(
@@ -246,3 +455,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
+Widget _selectorApp(Widget selector) => MaterialApp(
+      theme: lightMode,
+      home: Scaffold(
+        body: Center(child: SizedBox(width: 280, child: selector)),
+      ),
+    );

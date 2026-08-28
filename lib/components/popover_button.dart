@@ -4,7 +4,7 @@ import 'package:ecalculator/services/app_session.dart';
 import 'package:ecalculator/storage/settings_storage.dart';
 import 'package:flutter/material.dart';
 
-class PopoverButton extends StatefulWidget {
+class PopoverButton extends StatelessWidget {
   const PopoverButton({
     super.key,
     required this.startText,
@@ -18,14 +18,7 @@ class PopoverButton extends StatefulWidget {
   final ValueChanged<bool> checkControllers;
   final Future<List<String>> Function()? optionsLoader;
 
-  @override
-  State<PopoverButton> createState() => _PopoverButtonState();
-}
-
-class _PopoverButtonState extends State<PopoverButton> {
-  List<String> _options = const [];
-
-  bool get _isPeriod => widget.startText == 'Учебный период';
+  bool get _isPeriod => startText == 'Учебный период';
 
   String get _keyName => _isPeriod ? 'period-selector' : 'year-selector';
 
@@ -56,82 +49,20 @@ class _PopoverButtonState extends State<PopoverButton> {
     'Учебный год',
   ];
 
-  Future<void> _loadOptions() async {
-    final options = await (widget.optionsLoader?.call() ?? _defaultOptions());
-    if (mounted) setState(() => _options = options);
-  }
-
-  Future<void> _openOptions() async {
+  Future<void> _openOptions(BuildContext context) async {
     final selected = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
-      builder: (sheetContext) {
-        final theme = Theme.of(sheetContext);
-        final scheme = theme.colorScheme;
-        return SafeArea(
-          key: ValueKey('$_keyName-sheet'),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  widget.startText,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    color: scheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (_options.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 420),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _options.length,
-                      itemBuilder: (context, index) {
-                        final option = _options[index];
-                        final isSelected = widget.controller.text == option;
-                        return ListTile(
-                          key: ValueKey('$_keyName-option-$option'),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          selected: isSelected,
-                          selectedTileColor: scheme.secondaryContainer,
-                          textColor: scheme.onSurface,
-                          selectedColor: scheme.onSecondaryContainer,
-                          title: Text(
-                            option,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          trailing: isSelected ? const Icon(Icons.check) : null,
-                          onTap: () => Navigator.pop(sheetContext, option),
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
+      builder: (_) => _SelectorOptionsSheet(
+        keyName: _keyName,
+        title: startText,
+        selected: controller.text,
+        optionsLoader: optionsLoader ?? _defaultOptions,
+      ),
     );
-    if (selected == null || !mounted) return;
-    widget.controller.text = selected;
-    widget.checkControllers(false);
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _loadOptions();
+    if (selected == null || !context.mounted) return;
+    controller.text = selected;
+    checkControllers(false);
   }
 
   @override
@@ -139,13 +70,12 @@ class _PopoverButtonState extends State<PopoverButton> {
     final scheme = Theme.of(context).colorScheme;
 
     return ListenableBuilder(
-      listenable: widget.controller,
+      listenable: controller,
       builder: (context, _) {
-        final selected = widget.controller.text;
+        final selected = controller.text;
         return Semantics(
           button: true,
-          label:
-              '${widget.startText}: ${selected.isEmpty ? 'не выбран' : selected}',
+          label: '$startText: ${selected.isEmpty ? 'не выбран' : selected}',
           child: Material(
             key: ValueKey(_keyName),
             color: scheme.surfaceContainer,
@@ -156,7 +86,7 @@ class _PopoverButtonState extends State<PopoverButton> {
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               key: ValueKey('$_keyName-tap-target'),
-              onTap: _openOptions,
+              onTap: () => _openOptions(context),
               child: SizedBox(
                 height: 48,
                 child: Padding(
@@ -173,7 +103,7 @@ class _PopoverButtonState extends State<PopoverButton> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          selected.isEmpty ? widget.startText : selected,
+                          selected.isEmpty ? startText : selected,
                           key: ValueKey('$_keyName-value'),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -196,6 +126,123 @@ class _PopoverButtonState extends State<PopoverButton> {
           ),
         );
       },
+    );
+  }
+}
+
+class _SelectorOptionsSheet extends StatefulWidget {
+  const _SelectorOptionsSheet({
+    required this.keyName,
+    required this.title,
+    required this.selected,
+    required this.optionsLoader,
+  });
+
+  final String keyName;
+  final String title;
+  final String selected;
+  final Future<List<String>> Function() optionsLoader;
+
+  @override
+  State<_SelectorOptionsSheet> createState() => _SelectorOptionsSheetState();
+}
+
+class _SelectorOptionsSheetState extends State<_SelectorOptionsSheet> {
+  late final Future<List<String>> _options;
+
+  @override
+  void initState() {
+    super.initState();
+    _options = Future.sync(widget.optionsLoader);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return SafeArea(
+      key: ValueKey('${widget.keyName}-sheet'),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              widget.title,
+              style: theme.textTheme.titleLarge?.copyWith(
+                color: scheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Flexible(
+              child: FutureBuilder<List<String>>(
+                future: _options,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const _SelectorSheetMessage(
+                      child: CircularProgressIndicator(),
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return const _SelectorSheetMessage(
+                      child: Text('Не удалось загрузить'),
+                    );
+                  }
+                  final options = snapshot.data ?? const [];
+                  if (options.isEmpty) {
+                    return const _SelectorSheetMessage(
+                      child: Text('Нет вариантов'),
+                    );
+                  }
+                  return ListView.builder(
+                    key: ValueKey('${widget.keyName}-options-list'),
+                    shrinkWrap: true,
+                    itemCount: options.length,
+                    itemBuilder: (context, index) {
+                      final option = options[index];
+                      final isSelected = widget.selected == option;
+                      return ListTile(
+                        key: ValueKey('${widget.keyName}-option-$option'),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        selected: isSelected,
+                        selectedTileColor: scheme.secondaryContainer,
+                        textColor: scheme.onSurface,
+                        selectedColor: scheme.onSecondaryContainer,
+                        title: Text(
+                          option,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: isSelected ? const Icon(Icons.check) : null,
+                        onTap: () => Navigator.pop(context, option),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectorSheetMessage extends StatelessWidget {
+  const _SelectorSheetMessage({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: child),
+      ),
     );
   }
 }
