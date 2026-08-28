@@ -15,11 +15,13 @@ class TaskPage extends StatefulWidget {
     required this.item,
     required this.onDeleted,
     this.deleteTask,
+    this.databaseHelper,
   });
 
   final HomeworkItem item;
   final ValueChanged<HomeworkItem> onDeleted;
   final TaskDelete? deleteTask;
+  final DatabaseHelper? databaseHelper;
 
   @override
   State<TaskPage> createState() => _TaskPageState();
@@ -35,7 +37,11 @@ class _TaskPageState extends State<TaskPage> {
       if (widget.deleteTask case final deleteTask?) {
         await deleteTask(widget.item);
       } else if (!appSession.isDemo) {
-        await DatabaseHelper.instance.remove(widget.item.content);
+        final id = widget.item.localId;
+        if (id == null) {
+          throw StateError('Persisted local homework has no database id');
+        }
+        await (widget.databaseHelper ?? DatabaseHelper.instance).removeById(id);
       }
       if (!mounted) return;
       widget.onDeleted(widget.item);

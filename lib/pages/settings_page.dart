@@ -66,7 +66,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Настройки'),
-        actions: const [MoreMenu(canLeave: true)],
+        actions: const [MoreMenu(canLeave: false)],
       ),
       body: _isLoading
           ? Center(

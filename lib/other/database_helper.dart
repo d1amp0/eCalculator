@@ -6,13 +6,18 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 class DatabaseHelper {
-  DatabaseHelper._privateConstructor();
+  DatabaseHelper._privateConstructor() : _providedDatabase = null;
+
+  DatabaseHelper.withDatabase(Database database) : _providedDatabase = database;
 
   static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
 
   static Database? _database;
+  final Database? _providedDatabase;
 
-  Future<Database> get database async => _database ??= await _initDatabase();
+  Future<Database> get _defaultDatabase async {
+    return _database ??= await _initDatabase();
+  }
 
   Future<Database> _initDatabase() async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
@@ -31,21 +36,43 @@ class DatabaseHelper {
     ''');
   }
 
-  Future<List<Task>> getTasks() async {
-    Database db = await instance.database;
+  Future<List<Task>> getTasks() {
+    final provided = _providedDatabase;
+    if (provided != null) return _getTasks(provided);
+    return _getTasksFromDefault();
+  }
+
+  Future<List<Task>> _getTasksFromDefault() async =>
+      _getTasks(await _defaultDatabase);
+
+  Future<List<Task>> _getTasks(Database db) async {
     var tasks = await db.query('tasks', orderBy: 'subject');
     List<Task> tasksList =
         tasks.isNotEmpty ? tasks.map((c) => Task.fromMap(c)).toList() : [];
     return tasksList;
   }
 
-  Future<int> add(Task task) async {
-    Database db = await instance.database;
-    return await db.insert('tasks', task.toMap());
+  Future<int> add(Task task) {
+    final provided = _providedDatabase;
+    if (provided != null) return provided.insert('tasks', task.toMap());
+    return _addToDefault(task);
   }
 
-  Future<int> remove(String info) async {
-    Database db = await instance.database;
-    return await db.delete('tasks', where: 'info = ?', whereArgs: [info]);
+  Future<int> _addToDefault(Task task) async {
+    final db = await _defaultDatabase;
+    return db.insert('tasks', task.toMap());
+  }
+
+  Future<int> removeById(int id) {
+    final provided = _providedDatabase;
+    if (provided != null) {
+      return provided.delete('tasks', where: 'id = ?', whereArgs: [id]);
+    }
+    return _removeFromDefault(id);
+  }
+
+  Future<int> _removeFromDefault(int id) async {
+    final db = await _defaultDatabase;
+    return db.delete('tasks', where: 'id = ?', whereArgs: [id]);
   }
 }

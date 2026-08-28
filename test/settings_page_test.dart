@@ -1,4 +1,5 @@
 import 'package:ecalculator/components/theme_provider.dart';
+import 'package:ecalculator/components/more_menu.dart';
 import 'package:ecalculator/other/themes.dart';
 import 'package:ecalculator/pages/settings_page.dart';
 import 'package:flutter/material.dart';
@@ -72,6 +73,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Связаться с разработчиком'), findsNothing);
+    expect(tester.widget<MoreMenu>(find.byType(MoreMenu)).canLeave, isFalse);
     expect(find.byType(ListView), findsOneWidget);
     final logout = find.byKey(const ValueKey('settings-logout'));
     await tester.scrollUntilVisible(logout, 120);

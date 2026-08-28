@@ -4,7 +4,7 @@ import 'package:ecalculator/other/task.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-typedef TaskSaver = Future<void> Function(Task task);
+typedef TaskSaver = Future<int?> Function(Task task);
 typedef TaskDatePicker = Future<DateTime?> Function(BuildContext context);
 
 class AddTaskPage extends StatefulWidget {
@@ -15,7 +15,7 @@ class AddTaskPage extends StatefulWidget {
     this.datePicker,
   });
 
-  final ValueChanged<List<dynamic>> function;
+  final ValueChanged<Task> function;
   final TaskSaver? saveTask;
   final TaskDatePicker? datePicker;
 
@@ -62,13 +62,14 @@ class _AddTaskPageState extends State<AddTaskPage> {
       time: _selectedDate!.toUtc().millisecondsSinceEpoch,
     );
     try {
-      if (widget.saveTask case final saveTask?) {
-        await saveTask(task);
-      } else {
-        await DatabaseHelper.instance.add(task);
-      }
+      final saveTask = widget.saveTask;
+      final id = saveTask != null
+          ? await saveTask(task)
+          : await DatabaseHelper.instance.add(task);
       if (!mounted) return;
-      widget.function([task.time, task.subject, task.info]);
+      widget.function(
+        Task(id: id, subject: task.subject, info: task.info, time: task.time),
+      );
       Navigator.pop(context);
     } on Object {
       if (!mounted) return;
@@ -189,14 +190,6 @@ class _AddTaskPageState extends State<AddTaskPage> {
           FilledButton(
             key: const ValueKey('add-task-submit'),
             onPressed: _isValid && !_isSaving ? _submit : null,
-            style: FilledButton.styleFrom(
-              backgroundColor: scheme.surface,
-              foregroundColor: scheme.onSurface,
-              disabledBackgroundColor: scheme.surface.withValues(alpha: 0.55),
-              disabledForegroundColor: scheme.onSurface.withValues(
-                alpha: 0.38,
-              ),
-            ),
             child: _isSaving
                 ? const SizedBox.square(
                     dimension: 20,

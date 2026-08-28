@@ -135,15 +135,179 @@ void main() {
       expect(tester.takeException(), isNull);
     }
   });
+
+  testWidgets('shows local and remote homework when both sources succeed', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        HomeworkPage(
+          localItemsLoader: () async => [_item('Алгебра', today, local: true)],
+          remoteItemsLoader: () async => [_item('Физика', today)],
+          now: () => today,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Алгебра'), findsOneWidget);
+    expect(find.text('Физика'), findsOneWidget);
+  });
+
+  testWidgets('keeps local homework visible when eSchool loading fails', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        HomeworkPage(
+          localItemsLoader: () async => [_item('Алгебра', today, local: true)],
+          remoteItemsLoader: () async => throw StateError('offline'),
+          now: () => today,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Алгебра'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('remote-homework-warning')),
+      findsOneWidget,
+    );
+    expect(find.text('Не удалось загрузить задания'), findsNothing);
+  });
+
+  testWidgets('shows the full error when no local homework can be shown', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        HomeworkPage(
+          localItemsLoader: () async => [],
+          remoteItemsLoader: () async => throw StateError('offline'),
+          now: () => today,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Не удалось загрузить задания'), findsOneWidget);
+  });
+
+  testWidgets('keeps remote homework visible when local loading fails', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        HomeworkPage(
+          localItemsLoader: () async => throw StateError('database offline'),
+          remoteItemsLoader: () async => [_item('Физика', today)],
+          now: () => today,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Физика'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('local-homework-warning')),
+      findsOneWidget,
+    );
+    expect(find.text('Не удалось загрузить задания'), findsNothing);
+  });
+
+  testWidgets('remote retry adds remote homework once and preserves local', (
+    tester,
+  ) async {
+    var remoteAttempts = 0;
+    await tester.pumpWidget(
+      _app(
+        HomeworkPage(
+          localItemsLoader: () async => [_item('Алгебра', today, local: true)],
+          remoteItemsLoader: () async {
+            remoteAttempts++;
+            if (remoteAttempts == 1) throw StateError('offline');
+            return [_item('Физика', today)];
+          },
+          now: () => today,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('remote-homework-retry')));
+    await tester.pumpAndSettle();
+
+    expect(remoteAttempts, 2);
+    expect(find.text('Алгебра'), findsOneWidget);
+    expect(find.text('Физика'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Алгебра')).dy,
+      lessThan(tester.getTopLeft(find.text('Физика')).dy),
+    );
+    expect(
+      find.byKey(const ValueKey('remote-homework-warning')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('deletes one duplicate-text local task by its SQLite id', (
+    tester,
+  ) async {
+    final storedIds = <int>{1, 2};
+    final algebra = _item(
+      'Алгебра',
+      today,
+      local: true,
+      localId: 1,
+      content: 'Read §12',
+    );
+    final physics = _item(
+      'Физика',
+      today,
+      local: true,
+      localId: 2,
+      content: 'Read §12',
+    );
+
+    await tester.pumpWidget(
+      _app(
+        HomeworkPage(
+          localItemsLoader: () async => [algebra, physics],
+          remoteItemsLoader: () async => [],
+          deleteTask: (item) async => storedIds.remove(item.localId),
+          now: () => today,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Алгебра'), findsOneWidget);
+    expect(find.text('Физика'), findsOneWidget);
+
+    await tester.tap(find.text('Алгебра'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('delete-task')));
+    await tester.pumpAndSettle();
+
+    expect(storedIds, {2});
+    expect(find.text('Алгебра'), findsNothing);
+    expect(find.text('Физика'), findsOneWidget);
+  });
 }
 
-HomeworkItem _item(String subject, DateTime date, {bool local = false}) {
+HomeworkItem _item(
+  String subject,
+  DateTime date, {
+  bool local = false,
+  int? localId,
+  String content = '№412, 414, повторить правила',
+}) {
   return HomeworkItem(
     subject: subject,
-    content: '№412, 414, повторить правила',
-    preview: '№412, 414, повторить правила',
+    content: content,
+    preview: content,
     date: date,
     isLocal: local,
+    localId: localId,
   );
 }
 

@@ -2,6 +2,7 @@ import 'package:ecalculator/components/more_menu.dart';
 import 'package:ecalculator/models/homework_item.dart';
 import 'package:ecalculator/other/app_theme_colors.dart';
 import 'package:ecalculator/other/database_helper.dart';
+import 'package:ecalculator/other/task.dart';
 import 'package:ecalculator/pages/add_task_page.dart';
 import 'package:ecalculator/pages/task_page.dart';
 import 'package:ecalculator/server/functions.dart';
@@ -15,11 +16,19 @@ class HomeworkPage extends StatefulWidget {
   const HomeworkPage({
     super.key,
     this.itemsLoader,
+    this.localItemsLoader,
+    this.remoteItemsLoader,
+    this.databaseHelper,
+    this.deleteTask,
     this.onItemTap,
     this.now,
   });
 
   final HomeworkItemsLoader? itemsLoader;
+  final HomeworkItemsLoader? localItemsLoader;
+  final HomeworkItemsLoader? remoteItemsLoader;
+  final DatabaseHelper? databaseHelper;
+  final TaskDelete? deleteTask;
   final ValueChanged<HomeworkItem>? onItemTap;
   final DateTime Function()? now;
 
@@ -28,80 +37,138 @@ class HomeworkPage extends StatefulWidget {
 }
 
 class _HomeworkPageState extends State<HomeworkPage> {
+  var _localItems = <HomeworkItem>[];
+  var _remoteItems = <HomeworkItem>[];
   var _items = <HomeworkItem>[];
   var _isLoading = true;
-  Object? _loadError;
+  var _isRetryingLocal = false;
+  var _isRetryingRemote = false;
+  Object? _localError;
+  Object? _remoteError;
 
-  Future<List<HomeworkItem>> _loadProductionItems() async {
+  DatabaseHelper get _databaseHelper =>
+      widget.databaseHelper ?? DatabaseHelper.instance;
+
+  Future<List<HomeworkItem>> _loadProductionLocalItems() async {
     final items = <HomeworkItem>[];
-    if (!appSession.isDemo) {
-      final tasks = await DatabaseHelper.instance.getTasks();
-      final oldestAllowed = DateTime.now().millisecondsSinceEpoch -
-          const Duration(days: 7).inMilliseconds;
-      for (final task in tasks) {
-        if (task.time < oldestAllowed) {
-          await DatabaseHelper.instance.remove(task.info);
-        } else {
-          items.add(
-            HomeworkItem(
-              subject: task.subject,
-              content: task.info,
-              preview: task.info,
-              date: DateTime.fromMillisecondsSinceEpoch(task.time),
-              isLocal: true,
-            ),
-          );
-        }
+    if (appSession.isDemo) return items;
+
+    final tasks = await _databaseHelper.getTasks();
+    final oldestAllowed = DateTime.now().millisecondsSinceEpoch -
+        const Duration(days: 7).inMilliseconds;
+    for (final task in tasks) {
+      final id = task.id;
+      if (id == null) {
+        throw StateError('Persisted local homework has no database id');
+      }
+      if (task.time < oldestAllowed) {
+        await _databaseHelper.removeById(id);
+      } else {
+        items.add(HomeworkItem.fromTask(task));
       }
     }
-
-    final rawItems = await homeworkServer();
-    items.addAll(
-      rawItems.map((raw) => HomeworkItem.fromRaw(raw as List<dynamic>)),
-    );
     return items;
+  }
+
+  Future<List<HomeworkItem>> _loadProductionRemoteItems() async {
+    final rawItems = await homeworkServer();
+    return rawItems
+        .map((raw) => HomeworkItem.fromRaw(raw as List<dynamic>))
+        .toList();
+  }
+
+  HomeworkItemsLoader get _localLoader {
+    if (widget.localItemsLoader case final loader?) return loader;
+    if (widget.itemsLoader != null) return () async => <HomeworkItem>[];
+    return _loadProductionLocalItems;
+  }
+
+  HomeworkItemsLoader get _remoteLoader =>
+      widget.remoteItemsLoader ??
+      widget.itemsLoader ??
+      _loadProductionRemoteItems;
+
+  Future<_HomeworkLoadResult> _attempt(HomeworkItemsLoader loader) async {
+    try {
+      return _HomeworkLoadResult.success(await loader());
+    } on Object catch (error) {
+      return _HomeworkLoadResult.failure(error);
+    }
   }
 
   Future<void> _load() async {
     setState(() {
       _isLoading = true;
-      _loadError = null;
+      _localError = null;
+      _remoteError = null;
     });
-    try {
-      final loadedItems = await (widget.itemsLoader ?? _loadProductionItems)();
-      if (!mounted) return;
-      final items = [...loadedItems];
-      items.sort((a, b) => a.date.compareTo(b.date));
-      setState(() {
-        _items = items;
-        _isLoading = false;
-      });
-    } on Object catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loadError = error;
-        _isLoading = false;
-      });
-    }
+
+    final results = await Future.wait([
+      _attempt(_localLoader),
+      _attempt(_remoteLoader),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _localItems = results[0].items ?? <HomeworkItem>[];
+      _remoteItems = results[1].items ?? <HomeworkItem>[];
+      _localError = results[0].error;
+      _remoteError = results[1].error;
+      _rebuildItems();
+      _isLoading = false;
+    });
   }
 
-  void _addItem(List<dynamic> values) {
-    final item = HomeworkItem(
-      date: DateTime.fromMillisecondsSinceEpoch(values[0] as int),
-      subject: values[1].toString(),
-      content: values[2].toString(),
-      preview: values[2].toString(),
-      isLocal: true,
-    );
+  Future<void> _retryRemote() async {
+    if (_isRetryingRemote) return;
+    setState(() => _isRetryingRemote = true);
+    final result = await _attempt(_remoteLoader);
+    if (!mounted) return;
     setState(() {
-      _items = [..._items, item]..sort((a, b) => a.date.compareTo(b.date));
+      if (result.items case final items?) _remoteItems = items;
+      _remoteError = result.error;
+      _rebuildItems();
+      _isRetryingRemote = false;
+    });
+  }
+
+  Future<void> _retryLocal() async {
+    if (_isRetryingLocal) return;
+    setState(() => _isRetryingLocal = true);
+    final result = await _attempt(_localLoader);
+    if (!mounted) return;
+    setState(() {
+      if (result.items case final items?) _localItems = items;
+      _localError = result.error;
+      _rebuildItems();
+      _isRetryingLocal = false;
+    });
+  }
+
+  void _rebuildItems() {
+    final indexed = [..._localItems, ..._remoteItems].asMap().entries.toList();
+    indexed.sort((a, b) {
+      final byDate = a.value.date.compareTo(b.value.date);
+      return byDate != 0 ? byDate : a.key.compareTo(b.key);
+    });
+    _items = indexed.map((entry) => entry.value).toList();
+  }
+
+  void _addItem(Task task) {
+    final item = HomeworkItem.fromTask(task);
+    setState(() {
+      _localItems = [..._localItems, item];
+      _rebuildItems();
     });
   }
 
   void _removeItem(HomeworkItem item) {
-    setState(
-      () => _items = _items.where((value) => !identical(value, item)).toList(),
-    );
+    setState(() {
+      _localItems =
+          _localItems.where((value) => !identical(value, item)).toList();
+      _remoteItems =
+          _remoteItems.where((value) => !identical(value, item)).toList();
+      _rebuildItems();
+    });
   }
 
   void _openItem(HomeworkItem item) {
@@ -112,7 +179,12 @@ class _HomeworkPageState extends State<HomeworkPage> {
     Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => TaskPage(item: item, onDeleted: _removeItem),
+        builder: (_) => TaskPage(
+          item: item,
+          onDeleted: _removeItem,
+          databaseHelper: _databaseHelper,
+          deleteTask: widget.deleteTask,
+        ),
       ),
     );
   }
@@ -138,7 +210,8 @@ class _HomeworkPageState extends State<HomeworkPage> {
           MaterialPageRoute<void>(
             builder: (_) => AddTaskPage(
               function: _addItem,
-              saveTask: appSession.isDemo ? (_) async {} : null,
+              saveTask:
+                  appSession.isDemo ? (_) async => null : _databaseHelper.add,
             ),
           ),
         ),
@@ -157,7 +230,7 @@ class _HomeworkPageState extends State<HomeworkPage> {
         ),
       );
     }
-    if (_loadError != null) {
+    if (_remoteError != null && _localItems.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -178,13 +251,21 @@ class _HomeworkPageState extends State<HomeworkPage> {
         ),
       );
     }
+    final warnings = _buildDegradedWarnings();
     if (_items.isEmpty) {
-      return Center(
-        child: Text(
-          'Нет заданий',
-          key: const ValueKey('homework-empty'),
-          style: TextStyle(color: AppThemeColors.scaffoldText(context)),
-        ),
+      return Column(
+        children: [
+          ...warnings,
+          Expanded(
+            child: Center(
+              child: Text(
+                'Нет заданий',
+                key: const ValueKey('homework-empty'),
+                style: TextStyle(color: AppThemeColors.scaffoldText(context)),
+              ),
+            ),
+          ),
+        ],
       );
     }
 
@@ -193,7 +274,7 @@ class _HomeworkPageState extends State<HomeworkPage> {
       final date = DateTime(item.date.year, item.date.month, item.date.day);
       groups.putIfAbsent(date, () => []).add(item);
     }
-    final rows = <Widget>[];
+    final rows = <Widget>[...warnings];
     var itemIndex = 0;
     for (final entry in groups.entries) {
       rows.add(_DateHeader(date: entry.key, now: widget.now?.call()));
@@ -214,6 +295,75 @@ class _HomeworkPageState extends State<HomeworkPage> {
       children: rows,
     );
   }
+
+  List<Widget> _buildDegradedWarnings() {
+    return [
+      if (_remoteError != null && _localItems.isNotEmpty)
+        _DegradedWarning(
+          key: const ValueKey('remote-homework-warning'),
+          message: 'Задания eSchool временно недоступны',
+          retryKey: const ValueKey('remote-homework-retry'),
+          isRetrying: _isRetryingRemote,
+          onRetry: _retryRemote,
+        ),
+      if (_localError != null && _remoteError == null)
+        _DegradedWarning(
+          key: const ValueKey('local-homework-warning'),
+          message: 'Локальные задания временно недоступны',
+          retryKey: const ValueKey('local-homework-retry'),
+          isRetrying: _isRetryingLocal,
+          onRetry: _retryLocal,
+        ),
+    ];
+  }
+}
+
+class _DegradedWarning extends StatelessWidget {
+  const _DegradedWarning({
+    super.key,
+    required this.message,
+    required this.retryKey,
+    required this.isRetrying,
+    required this.onRetry,
+  });
+
+  final String message;
+  final Key retryKey;
+  final bool isRetrying;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(0, 8, 0, 2),
+      color: scheme.surfaceContainerLow,
+      child: ListTile(
+        dense: true,
+        leading: Icon(Icons.cloud_off_outlined, color: scheme.onSurfaceVariant),
+        title: Text(message),
+        trailing: TextButton(
+          key: retryKey,
+          onPressed: isRetrying ? null : onRetry,
+          child: isRetrying
+              ? const SizedBox.square(
+                  dimension: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Повторить'),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeworkLoadResult {
+  const _HomeworkLoadResult.success(this.items) : error = null;
+
+  const _HomeworkLoadResult.failure(this.error) : items = null;
+
+  final List<HomeworkItem>? items;
+  final Object? error;
 }
 
 class _DateHeader extends StatelessWidget {

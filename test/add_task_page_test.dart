@@ -17,7 +17,7 @@ void main() {
       _app(
         AddTaskPage(
           function: (_) {},
-          saveTask: (_) async {},
+          saveTask: (_) async => null,
           datePicker: (_) async => selectedDate,
         ),
       ),
@@ -51,14 +51,18 @@ void main() {
   testWidgets('successful creation saves and invokes callback only once', (
     tester,
   ) async {
-    final saving = Completer<void>();
+    final saving = Completer<int?>();
     var saves = 0;
     var callbacks = 0;
     Task? savedTask;
+    Task? createdTask;
     await tester.pumpWidget(
       _app(
         AddTaskPage(
-          function: (_) => callbacks++,
+          function: (task) {
+            createdTask = task;
+            callbacks++;
+          },
           saveTask: (task) {
             saves++;
             savedTask = task;
@@ -87,11 +91,12 @@ void main() {
     expect(saves, 1);
     expect(callbacks, 0);
 
-    saving.complete();
+    saving.complete(27);
     await tester.pumpAndSettle();
     expect(callbacks, 1);
     expect(savedTask?.subject, 'Алгебра');
     expect(savedTask?.info, 'Решить №412');
+    expect(createdTask?.id, 27);
   });
 
   testWidgets('long multiline input and keyboard do not overflow', (
@@ -106,7 +111,7 @@ void main() {
       _app(
         AddTaskPage(
           function: (_) {},
-          saveTask: (_) async {},
+          saveTask: (_) async => null,
           datePicker: (_) async => selectedDate,
         ),
         theme: darkMode,
@@ -134,7 +139,7 @@ void main() {
       _app(
         AddTaskPage(
           function: (_) {},
-          saveTask: (_) async {},
+          saveTask: (_) async => null,
           datePicker: (_) async => selectedDate,
         ),
       ),
@@ -146,6 +151,48 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: SizedBox()));
     await tester.pump();
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('submit uses the default FilledButton colors in every theme', (
+    tester,
+  ) async {
+    for (final theme in [defaultMode, lightMode, darkMode]) {
+      await tester.pumpWidget(
+        _app(
+          AddTaskPage(
+            key: ValueKey(theme.scaffoldBackgroundColor),
+            function: (_) {},
+            saveTask: (_) async => null,
+            datePicker: (_) async => selectedDate,
+          ),
+          theme: theme,
+        ),
+      );
+
+      final button = tester.widget<FilledButton>(
+        find.byKey(const ValueKey('add-task-submit')),
+      );
+      expect(button.style, isNull);
+      expect(button.onPressed, isNull);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('task-subject-field')),
+        'Алгебра',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('task-text-field')),
+        'Решить №412',
+      );
+      await tester.tap(find.byKey(const ValueKey('task-date-control')));
+      await tester.pumpAndSettle();
+
+      final enabledButton = tester.widget<FilledButton>(
+        find.byKey(const ValueKey('add-task-submit')),
+      );
+      expect(enabledButton.style, isNull);
+      expect(enabledButton.onPressed, isNotNull);
+      expect(tester.takeException(), isNull);
+    }
   });
 }
 

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:ecalculator/other/task.dart';
 import 'package:ecalculator/server/functions.dart';
 
 class HomeworkItem {
@@ -9,7 +10,17 @@ class HomeworkItem {
     required this.preview,
     required this.date,
     required this.isLocal,
+    this.localId,
   });
+
+  factory HomeworkItem.fromTask(Task task) => HomeworkItem(
+        subject: task.subject,
+        content: task.info,
+        preview: task.info,
+        date: DateTime.fromMillisecondsSinceEpoch(task.time),
+        isLocal: true,
+        localId: task.id,
+      );
 
   factory HomeworkItem.fromRaw(List<dynamic> raw) {
     final isLocal = raw[4] as bool;
@@ -41,4 +52,5 @@ class HomeworkItem {
   final String preview;
   final DateTime date;
   final bool isLocal;
+  final int? localId;
 }
