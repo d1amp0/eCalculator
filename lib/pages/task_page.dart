@@ -1,112 +1,115 @@
+import 'dart:convert';
+
+import 'package:ecalculator/components/more_menu.dart';
+import 'package:ecalculator/models/homework_item.dart';
+import 'package:ecalculator/other/database_helper.dart';
+import 'package:ecalculator/services/app_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
-import 'package:ecalculator/components/more_menu.dart';
-import 'package:ecalculator/other/database_helper.dart';
+
+typedef TaskDelete = Future<void> Function(HomeworkItem item);
 
 class TaskPage extends StatefulWidget {
-  final List task;
-  final Function function;
+  const TaskPage({
+    super.key,
+    required this.item,
+    required this.onDeleted,
+    this.deleteTask,
+    this.databaseHelper,
+  });
 
-  const TaskPage({super.key, required this.task, required this.function});
+  final HomeworkItem item;
+  final ValueChanged<HomeworkItem> onDeleted;
+  final TaskDelete? deleteTask;
+  final DatabaseHelper? databaseHelper;
 
   @override
   State<TaskPage> createState() => _TaskPageState();
 }
 
 class _TaskPageState extends State<TaskPage> {
-  void deleteFromDB() async {
-    await DatabaseHelper.instance.remove(widget.task[1]);
-    widget.function(widget.task[1]);
-    if (!mounted) return;
-    Navigator.pop(context);
+  var _isDeleting = false;
+
+  Future<void> _delete() async {
+    if (_isDeleting || !widget.item.isLocal) return;
+    setState(() => _isDeleting = true);
+    try {
+      if (widget.deleteTask case final deleteTask?) {
+        await deleteTask(widget.item);
+      } else if (!appSession.isDemo) {
+        final id = widget.item.localId;
+        if (id == null) {
+          throw StateError('Persisted local homework has no database id');
+        }
+        await (widget.databaseHelper ?? DatabaseHelper.instance).removeById(id);
+      }
+      if (!mounted) return;
+      widget.onDeleted(widget.item);
+      Navigator.pop(context);
+    } on Object {
+      if (!mounted) return;
+      setState(() => _isDeleting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось удалить задание')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final trimmed = widget.item.content.trimLeft();
+    final html = trimmed.startsWith('<')
+        ? widget.item.content
+        : '<p>${const HtmlEscape().convert(widget.item.content)}</p>';
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.pop(context);
-                  },
-                  child: Icon(
-                    Icons.arrow_back_sharp,
-                    color: Theme.of(context).textTheme.displaySmall?.color,
-                    size: 30,
-                  ),
-                ),
-                const Spacer(),
-                SizedBox(
-                  width: MediaQuery.of(context).size.width - 130,
-                  child: Text(
-                    widget.task[0],
-                    style: TextStyle(
-                      color: Theme.of(context).textTheme.displaySmall?.color,
-                      fontSize: 32,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const Spacer(),
-                const MoreMenu(canLeave: true),
-              ],
-            ),
-            Divider(
-              height: 5,
-              thickness: 1,
-              color: Theme.of(context).textTheme.displaySmall?.color,
-            ),
-            Padding(
-              padding: const EdgeInsets.only(right: 10, left: 10),
+      appBar: AppBar(
+        title: Text(
+          widget.item.subject,
+          key: const ValueKey('task-page-title'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        actions: const [MoreMenu(canLeave: true)],
+      ),
+      body: ListView(
+        key: const ValueKey('task-details-list'),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        children: [
+          Material(
+            color: scheme.surfaceContainer,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
               child: HtmlWidget(
-                widget.task[1][0] == '<'
-                    ? widget.task[1]
-                    : "<p>${widget.task[1]}</p>",
-                textStyle: TextStyle(
-                  color: Theme.of(context).textTheme.displaySmall?.color,
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  fontSize: 18,
-                ),
+                html,
+                key: const ValueKey('task-html-content'),
+                textStyle: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: scheme.onSurface,
+                      height: 1.45,
+                    ),
               ),
             ),
-            const Spacer(),
-            GestureDetector(
-              onTap: deleteFromDB,
-              child: Padding(
-                padding: const EdgeInsets.only(
-                  top: 20,
-                  left: 75,
-                  right: 75,
-                  bottom: 20,
-                ),
-                child: widget.task[3]
-                    ? Container(
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.secondary,
-                          borderRadius: BorderRadius.circular(10.0),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'Удалить',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                        ),
-                      )
-                    : null,
+          ),
+          if (widget.item.isLocal) ...[
+            const SizedBox(height: 24),
+            OutlinedButton.icon(
+              key: const ValueKey('delete-task'),
+              onPressed: _isDeleting ? null : _delete,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: scheme.error,
+                side: BorderSide(color: scheme.error),
               ),
+              icon: _isDeleting
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.delete_outline),
+              label: const Text('Удалить'),
             ),
           ],
-        ),
+        ],
       ),
     );
   }

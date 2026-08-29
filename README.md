@@ -22,6 +22,17 @@ checks, and release readiness while preserving the existing interface.
 - View eSchool homework and manage locally created tasks.
 - Store theme, academic-period, and calculation preferences locally.
 
+## Demo mode
+
+Choose **«Войти в демо»** on the login screen to evaluate the calculator,
+develop UI changes, or run through the product flow without an eSchool
+account. Demo marks and homework are deterministic fictional fixtures and do
+not describe a real student.
+
+Demo mode is fully local: it does not connect to eSchool, restore an eSchool
+session, or read and overwrite saved eSchool credentials. Leaving demo mode
+returns to login and leaves any previously remembered real account untouched.
+
 ## Screenshots
 
 Screenshots for the v4 interface will be added before the stable release.

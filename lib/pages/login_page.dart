@@ -5,11 +5,14 @@ import 'package:ecalculator/components/more_menu.dart';
 import 'package:ecalculator/pages/main_page.dart';
 import 'package:ecalculator/server/functions.dart';
 import 'package:ecalculator/services/eschool/eschool_session.dart';
+import 'package:ecalculator/services/app_session.dart';
 import 'package:flutter/material.dart';
 import 'package:ecalculator/other/colors.dart' as colors;
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage({super.key, this.skipSessionRestore = false});
+
+  final bool skipSessionRestore;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -42,6 +45,7 @@ class _LoginPageState extends State<LoginPage> {
     final restored = await eschoolSession.restore();
     if (!mounted) return;
     if (restored) {
+      appSession.activateAuthenticatedAccount();
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const MainPage()),
@@ -67,12 +71,14 @@ class _LoginPageState extends State<LoginPage> {
         if (!mounted) return;
         switch (result) {
           case LoginResult.authenticated:
+            appSession.activateAuthenticatedAccount();
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (context) => const MainPage()),
             );
             return;
           case LoginResult.authenticatedWithoutPersistence:
+            appSession.activateAuthenticatedAccount();
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text(
@@ -121,10 +127,22 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  void enterDemo() {
+    appSession.enterDemo();
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const MainPage()),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
-    restoreSession();
+    if (widget.skipSessionRestore) {
+      isRestoringSession = false;
+    } else {
+      restoreSession();
+    }
   }
 
   @override
@@ -147,7 +165,7 @@ class _LoginPageState extends State<LoginPage> {
             const Spacer(),
             Center(
               child: Container(
-                height: 350,
+                height: 410,
                 width: 340,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
@@ -252,6 +270,17 @@ class _LoginPageState extends State<LoginPage> {
                                 ),
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      key: const ValueKey('login-demo-button'),
+                      onPressed: isLoading ? null : enterDemo,
+                      icon: const Icon(Icons.science_outlined),
+                      label: const Text('Войти в демо'),
+                    ),
+                    Text(
+                      'Без аккаунта eSchool и подключения к сети',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                 ),

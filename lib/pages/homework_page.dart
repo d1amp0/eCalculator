@@ -1,337 +1,528 @@
-import 'dart:convert';
-
-import 'package:flutter/material.dart';
-import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:ecalculator/components/more_menu.dart';
+import 'package:ecalculator/models/homework_item.dart';
+import 'package:ecalculator/other/app_theme_colors.dart';
 import 'package:ecalculator/other/database_helper.dart';
+import 'package:ecalculator/other/task.dart';
 import 'package:ecalculator/pages/add_task_page.dart';
 import 'package:ecalculator/pages/task_page.dart';
 import 'package:ecalculator/server/functions.dart';
+import 'package:ecalculator/services/app_session.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+typedef HomeworkItemsLoader = Future<List<HomeworkItem>> Function();
+
 class HomeworkPage extends StatefulWidget {
-  const HomeworkPage({super.key});
+  const HomeworkPage({
+    super.key,
+    this.itemsLoader,
+    this.localItemsLoader,
+    this.remoteItemsLoader,
+    this.databaseHelper,
+    this.deleteTask,
+    this.saveTask,
+    this.taskDatePicker,
+    this.onItemTap,
+    this.now,
+  });
+
+  final HomeworkItemsLoader? itemsLoader;
+  final HomeworkItemsLoader? localItemsLoader;
+  final HomeworkItemsLoader? remoteItemsLoader;
+  final DatabaseHelper? databaseHelper;
+  final TaskDelete? deleteTask;
+  final TaskSaver? saveTask;
+  final TaskDatePicker? taskDatePicker;
+  final ValueChanged<HomeworkItem>? onItemTap;
+  final DateTime Function()? now;
 
   @override
   State<HomeworkPage> createState() => _HomeworkPageState();
 }
 
 class _HomeworkPageState extends State<HomeworkPage> {
-  Map<int, List> homeworks = {};
-  List<int> dates = [];
-  List rawHomeworks = [];
-  bool readyToBuild = false;
+  var _localItems = <HomeworkItem>[];
+  var _remoteItems = <HomeworkItem>[];
+  var _items = <HomeworkItem>[];
+  final _addedLocalItemsById = <int, HomeworkItem>{};
+  final _addedLocalItemsWithoutId = <HomeworkItem>[];
+  final _deletedLocalIds = <int>{};
+  final _deletedLocalItemsWithoutId = Set<HomeworkItem>.identity();
+  var _localLoadGeneration = 0;
+  var _remoteLoadGeneration = 0;
+  var _isLoadingLocal = false;
+  var _isLoadingRemote = false;
+  var _isRetryingLocal = false;
+  var _isRetryingRemote = false;
+  Object? _localError;
+  Object? _remoteError;
 
-  Future<Map<int, List>> homework() async {
-    Map<int, List> homeworksDate = {};
-    List waiting = await homeworkServer();
-    for (var elem in waiting) {
-      rawHomeworks.add(elem);
+  DatabaseHelper get _databaseHelper =>
+      widget.databaseHelper ?? DatabaseHelper.instance;
+
+  Future<List<HomeworkItem>> _loadProductionLocalItems() async {
+    final items = <HomeworkItem>[];
+    if (appSession.isDemo) return items;
+
+    final tasks = await _databaseHelper.getTasks();
+    final oldestAllowed = DateTime.now().millisecondsSinceEpoch -
+        const Duration(days: 7).inMilliseconds;
+    for (final task in tasks) {
+      final id = task.id;
+      if (id == null) {
+        throw StateError('Persisted local homework has no database id');
+      }
+      if (task.time < oldestAllowed) {
+        await _databaseHelper.removeById(id);
+      } else {
+        items.add(HomeworkItem.fromTask(task));
+      }
     }
-    for (var elem in rawHomeworks) {
-      if (homeworksDate.containsKey(elem[2])) {
-        if (elem[4]) {
-          homeworksDate[elem[2]]?.add([elem[1], elem[3], elem[3], true]);
-        } else {
-          homeworksDate[elem[2]]?.add([
-            utf8.decode(latin1.encode(elem[1])),
-            elem[3] != null
-                ? deleteColors(utf8.decode(latin1.encode(elem[3])))
-                : '',
-            elem[3] != null
-                ? extractText(utf8.decode(latin1.encode(elem[3])))
-                : '',
-            false,
-          ]);
+    return items;
+  }
+
+  Future<List<HomeworkItem>> _loadProductionRemoteItems() async {
+    final rawItems = await homeworkServer();
+    return rawItems
+        .map((raw) => HomeworkItem.fromRaw(raw as List<dynamic>))
+        .toList();
+  }
+
+  HomeworkItemsLoader get _localLoader {
+    if (widget.localItemsLoader case final loader?) return loader;
+    if (widget.itemsLoader != null) return () async => <HomeworkItem>[];
+    return _loadProductionLocalItems;
+  }
+
+  HomeworkItemsLoader get _remoteLoader =>
+      widget.remoteItemsLoader ??
+      widget.itemsLoader ??
+      _loadProductionRemoteItems;
+
+  Future<_HomeworkLoadResult> _attempt(HomeworkItemsLoader loader) async {
+    try {
+      return _HomeworkLoadResult.success(await loader());
+    } on Object catch (error) {
+      return _HomeworkLoadResult.failure(error);
+    }
+  }
+
+  Future<void> _load() async {
+    await Future.wait([
+      _loadLocal(),
+      _loadRemote(),
+    ]);
+  }
+
+  Future<void> _loadLocal({bool isRetry = false}) async {
+    final generation = ++_localLoadGeneration;
+    setState(() {
+      _isLoadingLocal = true;
+      _isRetryingLocal = isRetry;
+      _localError = null;
+    });
+
+    final result = await _attempt(_localLoader);
+    if (!mounted || generation != _localLoadGeneration) return;
+    setState(() {
+      if (result.items case final items?) {
+        _localItems = _mergeLocalSnapshot(items);
+      }
+      _localError = result.error;
+      _rebuildItems();
+      _isLoadingLocal = false;
+      _isRetryingLocal = false;
+    });
+  }
+
+  Future<void> _loadRemote({bool isRetry = false}) async {
+    final generation = ++_remoteLoadGeneration;
+    setState(() {
+      _isLoadingRemote = true;
+      _isRetryingRemote = isRetry;
+      _remoteError = null;
+    });
+
+    final result = await _attempt(_remoteLoader);
+    if (!mounted || generation != _remoteLoadGeneration) return;
+    setState(() {
+      if (result.items case final items?) _remoteItems = items;
+      _remoteError = result.error;
+      _rebuildItems();
+      _isLoadingRemote = false;
+      _isRetryingRemote = false;
+    });
+  }
+
+  Future<void> _retryRemote() async {
+    if (_isRetryingRemote) return;
+    await _loadRemote(isRetry: true);
+  }
+
+  Future<void> _retryLocal() async {
+    if (_isRetryingLocal) return;
+    await _loadLocal(isRetry: true);
+  }
+
+  List<HomeworkItem> _mergeLocalSnapshot(List<HomeworkItem> snapshot) {
+    final merged = <HomeworkItem>[];
+    final seenIds = <int>{};
+    final seenWithoutId = Set<HomeworkItem>.identity();
+
+    void addIfCurrent(HomeworkItem item) {
+      final id = item.localId;
+      if (id != null) {
+        if (_deletedLocalIds.contains(id) ||
+            _addedLocalItemsById.containsKey(id) ||
+            !seenIds.add(id)) {
+          return;
         }
       } else {
-        if (elem[4]) {
-          homeworksDate.addAll({
-            elem[2]: [
-              [elem[1], elem[3], elem[3], true],
-            ],
-          });
-        } else {
-          homeworksDate.addAll({
-            elem[2]: [
-              [
-                utf8.decode(latin1.encode(elem[1])),
-                elem[3] != null
-                    ? deleteColors(utf8.decode(latin1.encode(elem[3])))
-                    : '',
-                elem[3] != null
-                    ? extractText(utf8.decode(latin1.encode(elem[3])))
-                    : '',
-                false,
-              ],
-            ],
-          });
+        if (_deletedLocalItemsWithoutId.contains(item) ||
+            _addedLocalItemsWithoutId.any((added) => identical(added, item)) ||
+            !seenWithoutId.add(item)) {
+          return;
         }
       }
+      merged.add(item);
     }
-    return homeworksDate;
-  }
 
-  Future<void> fillHomeworks() async {
-    homeworks = await homework();
-    dates = homeworks.keys.toList();
-    dates.sort();
-    setState(() {
-      readyToBuild = true;
-    });
-  }
-
-  void addToHomeworks(List list) {
-    if (homeworks.containsKey(list[0])) {
-      setState(() {
-        homeworks[list[0]]?.add([list[1], list[2], list[2], true]);
-        refreshDates();
-      });
-    } else {
-      setState(() {
-        homeworks.addAll({
-          list[0]: [
-            [list[1], list[2], list[2], true],
-          ],
-        });
-        refreshDates();
-      });
+    for (final item in snapshot) {
+      addIfCurrent(item);
     }
+    for (final item in _addedLocalItemsById.values) {
+      if (!_deletedLocalIds.contains(item.localId)) merged.add(item);
+    }
+    for (final item in _addedLocalItemsWithoutId) {
+      if (!_deletedLocalItemsWithoutId.contains(item)) merged.add(item);
+    }
+    return merged;
   }
 
-  void deleteFromHomeworks(String text) {
-    setState(() {
-      int keyDelete = 0;
-      List listDelete = [];
-      for (var key in homeworks.keys) {
-        for (var elem in homeworks[key]!) {
-          if (elem.contains(text)) {
-            keyDelete = key;
-            listDelete = elem;
-            break;
-          }
-        }
-      }
-      homeworks[keyDelete]?.remove(listDelete);
-      if (homeworks[keyDelete]!.isEmpty) {
-        homeworks.remove(keyDelete);
-      }
-      refreshDates();
+  void _rebuildItems() {
+    final indexed = [..._localItems, ..._remoteItems].asMap().entries.toList();
+    indexed.sort((a, b) {
+      final byDate = a.value.date.compareTo(b.value.date);
+      return byDate != 0 ? byDate : a.key.compareTo(b.key);
     });
+    _items = indexed.map((entry) => entry.value).toList();
   }
 
-  void refreshDates() {
+  void _addItem(Task task) {
+    final item = HomeworkItem.fromTask(task);
     setState(() {
-      dates = homeworks.keys.toList();
-      dates.sort();
-    });
-  }
-
-  Future<void> openDB() async {
-    List tasks = await DatabaseHelper.instance.getTasks();
-    for (var task in tasks) {
-      if (task.time <
-          DateTime.now().millisecondsSinceEpoch - 7 * 24 * 60 * 60 * 1000) {
-        await DatabaseHelper.instance.remove(task.info);
+      final id = item.localId;
+      if (id != null) {
+        _deletedLocalIds.remove(id);
+        _addedLocalItemsById[id] = item;
       } else {
-        rawHomeworks.add([0000000, task.subject, task.time, task.info, true]);
+        _deletedLocalItemsWithoutId.remove(item);
+        _addedLocalItemsWithoutId.add(item);
       }
-    }
+      _localItems = _mergeLocalSnapshot(_localItems);
+      _rebuildItems();
+    });
   }
 
-  Future<void> homeworkStuff() async {
-    await openDB();
-    fillHomeworks();
+  void _removeItem(HomeworkItem item) {
+    setState(() {
+      final id = item.localId;
+      if (id != null) {
+        _deletedLocalIds.add(id);
+        _addedLocalItemsById.remove(id);
+      } else {
+        _deletedLocalItemsWithoutId.add(item);
+        _addedLocalItemsWithoutId.removeWhere(
+          (added) => identical(added, item),
+        );
+      }
+      _localItems = _localItems.where((value) {
+        if (id != null) return value.localId != id;
+        return !identical(value, item);
+      }).toList();
+      _remoteItems =
+          _remoteItems.where((value) => !identical(value, item)).toList();
+      _rebuildItems();
+    });
+  }
+
+  void _openItem(HomeworkItem item) {
+    if (widget.onItemTap case final onItemTap?) {
+      onItemTap(item);
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => TaskPage(
+          item: item,
+          onDeleted: _removeItem,
+          databaseHelper: _databaseHelper,
+          deleteTask: widget.deleteTask,
+        ),
+      ),
+    );
   }
 
   @override
   void initState() {
-    homeworkStuff();
     super.initState();
+    _load();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => AddTaskPage(function: addToHomeworks),
-            ),
-          );
-        },
-        backgroundColor: Theme.of(context).colorScheme.secondary,
-        foregroundColor: Theme.of(context).textTheme.displayLarge?.color,
-        child: const Icon(Icons.add_task, size: 30),
+      appBar: AppBar(
+        title: const Text('Задания'),
+        actions: const [MoreMenu(canLeave: true)],
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const Spacer(flex: 3),
-                Text(
-                  "Задания",
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.displaySmall?.color,
-                    fontSize: 32,
-                  ),
-                ),
-                const Spacer(flex: 2),
-                const MoreMenu(canLeave: true),
-              ],
+      floatingActionButton: FloatingActionButton(
+        key: const ValueKey('add-task-fab'),
+        tooltip: 'Добавить задание',
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => AddTaskPage(
+              function: _addItem,
+              saveTask: widget.saveTask ??
+                  (appSession.isDemo ? (_) async => null : _databaseHelper.add),
+              datePicker: widget.taskDatePicker,
             ),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: MediaQuery.of(context).size.height - 180,
-              child: readyToBuild
-                  ? ListView.builder(
-                      itemCount: dates.length,
-                      itemBuilder: (context, indexDate) {
-                        return Column(
-                          children: [
-                            Center(
-                              child: Container(
-                                height: 25,
-                                width: 85,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(10),
-                                  shape: BoxShape.rectangle,
-                                  color:
-                                      Theme.of(context).colorScheme.secondary,
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    DateFormat('dd.MM.yyyy')
-                                        .format(
-                                          DateTime.fromMillisecondsSinceEpoch(
-                                            dates[indexDate],
-                                          ),
-                                        )
-                                        .toString(),
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Theme.of(context)
-                                          .textTheme
-                                          .displayLarge
-                                          ?.color,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              height: homeworks[dates[indexDate]]!
-                                      .length
-                                      .toDouble() *
-                                  110,
-                              child: ListView.builder(
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: homeworks[dates[indexDate]]?.length,
-                                itemBuilder: (context, index) {
-                                  return Column(
-                                    children: [
-                                      GestureDetector(
-                                        child: Center(
-                                          child: Container(
-                                            height: 100,
-                                            width: MediaQuery.of(context)
-                                                    .size
-                                                    .width -
-                                                30,
-                                            decoration: BoxDecoration(
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                              shape: BoxShape.rectangle,
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .secondary,
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                const SizedBox(height: 3),
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                    right: 10,
-                                                    left: 10,
-                                                  ),
-                                                  child: Text(
-                                                    homeworks[dates[
-                                                                indexDate]]![
-                                                            index][0]
-                                                        .toString(),
-                                                    style: TextStyle(
-                                                      fontSize: 24,
-                                                      color: Theme.of(context)
-                                                          .textTheme
-                                                          .displayLarge
-                                                          ?.color,
-                                                    ),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                ),
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                    right: 10,
-                                                    left: 10,
-                                                  ),
-                                                  child: SizedBox(
-                                                    height: 54,
-                                                    child: HtmlWidget(
-                                                      homeworks[dates[
-                                                              indexDate]]![
-                                                          index][2],
-                                                      textStyle: TextStyle(
-                                                        fontSize: 12,
-                                                        color: Theme.of(context)
-                                                            .textTheme
-                                                            .displayLarge
-                                                            ?.color,
-                                                        overflow:
-                                                            TextOverflow.fade,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                        onTap: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) => TaskPage(
-                                                task: homeworks[
-                                                    dates[indexDate]]![index],
-                                                function: deleteFromHomeworks,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                      const SizedBox(height: 10),
-                                    ],
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    )
-                  : null,
+          ),
+        ),
+        child: const Icon(Icons.add_rounded),
+      ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_items.isEmpty && (_isLoadingLocal || _isLoadingRemote)) {
+      return Center(
+        child: CircularProgressIndicator(
+          key: const ValueKey('homework-loading'),
+          color: AppThemeColors.scaffoldText(context),
+        ),
+      );
+    }
+    if (_remoteError != null && _localItems.isEmpty && !_isLoadingLocal) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Не удалось загрузить задания',
+              style: TextStyle(color: AppThemeColors.scaffoldText(context)),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _load,
+              style: TextButton.styleFrom(
+                foregroundColor: AppThemeColors.scaffoldText(context),
+              ),
+              child: const Text('Повторить'),
             ),
           ],
+        ),
+      );
+    }
+    final warnings = _buildDegradedWarnings();
+    if (_items.isEmpty) {
+      return Column(
+        children: [
+          ...warnings,
+          Expanded(
+            child: Center(
+              child: Text(
+                'Нет заданий',
+                key: const ValueKey('homework-empty'),
+                style: TextStyle(color: AppThemeColors.scaffoldText(context)),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final groups = <DateTime, List<HomeworkItem>>{};
+    for (final item in _items) {
+      final date = DateTime(item.date.year, item.date.month, item.date.day);
+      groups.putIfAbsent(date, () => []).add(item);
+    }
+    final rows = <Widget>[...warnings];
+    var itemIndex = 0;
+    for (final entry in groups.entries) {
+      rows.add(_DateHeader(date: entry.key, now: widget.now?.call()));
+      for (final item in entry.value) {
+        rows.add(
+          _TaskTile(
+            key: ValueKey('homework-task-${itemIndex++}'),
+            item: item,
+            onTap: () => _openItem(item),
+          ),
+        );
+      }
+    }
+
+    return ListView(
+      key: const ValueKey('homework-list'),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+      children: rows,
+    );
+  }
+
+  List<Widget> _buildDegradedWarnings() {
+    return [
+      if (_remoteError != null && _localItems.isNotEmpty)
+        _DegradedWarning(
+          key: const ValueKey('remote-homework-warning'),
+          message: 'Задания eSchool временно недоступны',
+          retryKey: const ValueKey('remote-homework-retry'),
+          isRetrying: _isRetryingRemote,
+          onRetry: _retryRemote,
+        ),
+      if (_localError != null && _remoteError == null)
+        _DegradedWarning(
+          key: const ValueKey('local-homework-warning'),
+          message: 'Локальные задания временно недоступны',
+          retryKey: const ValueKey('local-homework-retry'),
+          isRetrying: _isRetryingLocal,
+          onRetry: _retryLocal,
+        ),
+    ];
+  }
+}
+
+class _DegradedWarning extends StatelessWidget {
+  const _DegradedWarning({
+    super.key,
+    required this.message,
+    required this.retryKey,
+    required this.isRetrying,
+    required this.onRetry,
+  });
+
+  final String message;
+  final Key retryKey;
+  final bool isRetrying;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(0, 8, 0, 2),
+      color: scheme.surfaceContainerLow,
+      child: ListTile(
+        dense: true,
+        leading: Icon(Icons.cloud_off_outlined, color: scheme.onSurfaceVariant),
+        title: Text(message),
+        trailing: TextButton(
+          key: retryKey,
+          onPressed: isRetrying ? null : onRetry,
+          child: isRetrying
+              ? const SizedBox.square(
+                  dimension: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Повторить'),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeworkLoadResult {
+  const _HomeworkLoadResult.success(this.items) : error = null;
+
+  const _HomeworkLoadResult.failure(this.error) : items = null;
+
+  final List<HomeworkItem>? items;
+  final Object? error;
+}
+
+class _DateHeader extends StatelessWidget {
+  const _DateHeader({required this.date, DateTime? now}) : _now = now;
+
+  final DateTime date;
+  final DateTime? _now;
+
+  String _label() {
+    final now = _now ?? DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (date == today) return 'Сегодня';
+    if (date == today.add(const Duration(days: 1))) return 'Завтра';
+    return DateFormat(
+      date.year == today.year ? 'd MMMM' : 'd MMMM y',
+      'ru',
+    ).format(date);
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
+        child: Text(
+          _label(),
+          key: ValueKey('homework-date-${date.millisecondsSinceEpoch}'),
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: AppThemeColors.scaffoldText(
+                  context,
+                ).withValues(alpha: 0.78),
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+      );
+}
+
+class _TaskTile extends StatelessWidget {
+  const _TaskTile({super.key, required this.item, required this.onTap});
+
+  final HomeworkItem item;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final source = item.isLocal ? 'Добавлено вручную' : 'eSchool';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Card(
+        margin: EdgeInsets.zero,
+        color: scheme.surfaceContainer,
+        surfaceTintColor: Colors.transparent,
+        clipBehavior: Clip.antiAlias,
+        child: Semantics(
+          button: true,
+          label: '${item.subject}. $source',
+          child: ListTile(
+            onTap: onTap,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 4,
+            ),
+            leading: Tooltip(
+              message: source,
+              child: Icon(
+                item.isLocal ? Icons.edit_note_outlined : Icons.school_outlined,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            title: Text(
+              item.subject,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: item.preview.trim().isEmpty
+                ? null
+                : Text(
+                    item.preview.trim(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+            trailing: const Icon(Icons.chevron_right_rounded),
+          ),
         ),
       ),
     );

@@ -1,244 +1,194 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:ecalculator/components/icon_button.dart';
 import 'package:ecalculator/components/more_menu.dart';
-import 'package:ecalculator/components/popover_button.dart';
 import 'package:ecalculator/components/theme_provider.dart';
 import 'package:ecalculator/components/logout_dialog.dart';
+import 'package:ecalculator/other/app_theme_colors.dart';
 import 'package:ecalculator/storage/settings_storage.dart';
 import 'package:provider/provider.dart';
 
 class SettingsPage extends StatefulWidget {
-  final PopoverButton? popoverButton;
+  const SettingsPage({super.key, this.logout});
 
-  const SettingsPage({super.key, this.popoverButton});
+  final Future<void> Function()? logout;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  List<bool> isSelected = [false, false, false];
-  int? themeSliding, periodSliding, markSliding;
-  bool withPM = false;
-  final settings = SettingsStorage();
+  final _settings = SettingsStorage();
+  int _theme = 0;
+  int _period = 0;
+  bool _withPlusMinus = false;
+  bool _isLoading = true;
 
-  void saveTheme() async {
-    await settings.writeInt("theme", themeSliding!);
-  }
-
-  void getTheme() async {
-    int? theme = await settings.readInt("theme");
-    theme != null ? themeSliding = theme : themeSliding = 0;
-    if (mounted) setState(() {});
-  }
-
-  void savePeriod() async {
-    await settings.writeInt("period_type", periodSliding!);
-  }
-
-  void getPeriod() async {
-    int? period = await settings.readInt("period_type");
-    period != null ? periodSliding = period : periodSliding = 0;
-    if (mounted) setState(() {});
-  }
-
-  void savePM(bool? value) async {
+  Future<void> _load() async {
+    final values = await Future.wait<Object?>([
+      _settings.readInt('theme'),
+      _settings.readInt('period_type'),
+      _settings.readBool('mark_type'),
+    ]);
+    if (!mounted) return;
     setState(() {
-      withPM = !withPM;
+      _theme = values[0] as int? ?? 0;
+      _period = values[1] as int? ?? 0;
+      _withPlusMinus = values[2] as bool? ?? false;
+      _isLoading = false;
     });
-    await settings.writeBool("mark_type", withPM);
   }
 
-  void getPM() async {
-    bool? mark = await settings.readBool("mark_type");
-    mark != null ? withPM = mark : withPM = false;
-    if (mounted) setState(() {});
+  Future<void> _selectTheme(int value) async {
+    setState(() => _theme = value);
+    Provider.of<ThemeProvider>(context, listen: false).toggleTheme(value);
+    await _settings.writeInt('theme', value);
+  }
+
+  Future<void> _selectPeriod(int value) async {
+    setState(() => _period = value);
+    await _settings.writeInt('period_type', value);
+  }
+
+  Future<void> _setPlusMinus(bool value) async {
+    setState(() => _withPlusMinus = value);
+    await _settings.writeBool('mark_type', value);
   }
 
   @override
   void initState() {
     super.initState();
-    getPM();
-    getTheme();
-    getPeriod();
+    _load();
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            Row(
+      appBar: AppBar(
+        title: const Text('Настройки'),
+        actions: const [MoreMenu(canLeave: false)],
+      ),
+      body: _isLoading
+          ? Center(
+              child: CircularProgressIndicator(
+                color: AppThemeColors.scaffoldText(context),
+              ),
+            )
+          : ListView(
+              key: const ValueKey('settings-list'),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               children: [
-                const Spacer(flex: 3),
-                Text(
-                  "Настройки",
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.displaySmall?.color,
-                    fontSize: 32,
+                const _SectionTitle('Оформление'),
+                _Surface(
+                  child: SegmentedButton<int>(
+                    key: const ValueKey('theme-selector'),
+                    showSelectedIcon: false,
+                    expandedInsets: EdgeInsets.zero,
+                    style: _segmentedStyle(scheme),
+                    segments: const [
+                      ButtonSegment(value: 0, label: Text('Стандартная')),
+                      ButtonSegment(value: 1, label: Text('Светлая')),
+                      ButtonSegment(value: 2, label: Text('Тёмная')),
+                    ],
+                    selected: {_theme},
+                    onSelectionChanged: (values) => _selectTheme(values.first),
                   ),
                 ),
-                const Spacer(flex: 2),
-                const MoreMenu(canLeave: true),
+                const _SectionTitle('Учебный период'),
+                _Surface(
+                  child: SegmentedButton<int>(
+                    key: const ValueKey('period-type-selector'),
+                    showSelectedIcon: false,
+                    expandedInsets: EdgeInsets.zero,
+                    style: _segmentedStyle(scheme),
+                    segments: const [
+                      ButtonSegment(value: 0, label: Text('Четверти')),
+                      ButtonSegment(value: 1, label: Text('Полугодия')),
+                      ButtonSegment(value: 2, label: Text('Семестры')),
+                    ],
+                    selected: {_period},
+                    onSelectionChanged: (values) => _selectPeriod(values.first),
+                  ),
+                ),
+                const _SectionTitle('Калькулятор'),
+                _Surface(
+                  padding: EdgeInsets.zero,
+                  child: SwitchListTile(
+                    key: const ValueKey('plus-minus-setting'),
+                    value: _withPlusMinus,
+                    onChanged: _setPlusMinus,
+                    title: const Text('Оценки + и −'),
+                    subtitle: const Text('Например, 4+ и 5−'),
+                    secondary: const Icon(Icons.exposure_outlined),
+                  ),
+                ),
+                const _SectionTitle('Аккаунт'),
+                _Surface(
+                  padding: EdgeInsets.zero,
+                  child: ListTile(
+                    key: const ValueKey('settings-logout'),
+                    onTap: () => showLogoutDialog(
+                      context,
+                      logout: widget.logout,
+                    ),
+                    leading: Icon(Icons.logout, color: scheme.error),
+                    title: Text('Выйти', style: TextStyle(color: scheme.error)),
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 25),
-            Center(
-              child: CupertinoSlidingSegmentedControl(
-                children: {
-                  0: Text(
-                    "Стандартная\nтема",
-                    style: TextStyle(
-                      color: themeSliding == 0
-                          ? Theme.of(context).textTheme.displaySmall?.color
-                          : Theme.of(context).textTheme.displayLarge?.color,
-                      fontSize: 16,
-                    ),
-                  ),
-                  1: Text(
-                    "Светлая\nтема",
-                    style: TextStyle(
-                      color: themeSliding == 1
-                          ? Theme.of(context).textTheme.displaySmall?.color
-                          : Theme.of(context).textTheme.displayLarge?.color,
-                      fontSize: 16,
-                    ),
-                  ),
-                  2: Text(
-                    "Тёмная\nтема",
-                    style: TextStyle(
-                      color: themeSliding == 2
-                          ? Theme.of(context).textTheme.displaySmall?.color
-                          : Theme.of(context).textTheme.displayLarge?.color,
-                      fontSize: 16,
-                    ),
-                  ),
-                },
-                groupValue: themeSliding,
-                onValueChanged: (int? index) {
-                  setState(() {
-                    themeSliding = index;
-                    saveTheme();
-                  });
-                  Provider.of<ThemeProvider>(
-                    context,
-                    listen: false,
-                  ).toggleTheme(index!);
-                },
-                backgroundColor: Theme.of(context).colorScheme.secondary,
-                thumbColor: Theme.of(context).colorScheme.primary,
-                padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 3),
-              ),
-            ),
-            const SizedBox(height: 25),
-            Center(
-              child: CupertinoSlidingSegmentedControl(
-                children: {
-                  0: Text(
-                    "  Четверти ",
-                    style: TextStyle(
-                      color: periodSliding == 0
-                          ? Theme.of(context).textTheme.displaySmall?.color
-                          : Theme.of(context).textTheme.displayLarge?.color,
-                      fontSize: 16,
-                    ),
-                  ),
-                  1: Text(
-                    "  Полугодия  ",
-                    style: TextStyle(
-                      color: periodSliding == 1
-                          ? Theme.of(context).textTheme.displaySmall?.color
-                          : Theme.of(context).textTheme.displayLarge?.color,
-                      fontSize: 16,
-                    ),
-                  ),
-                  2: Text(
-                    "  Семестры ",
-                    style: TextStyle(
-                      color: periodSliding == 2
-                          ? Theme.of(context).textTheme.displaySmall?.color
-                          : Theme.of(context).textTheme.displayLarge?.color,
-                      fontSize: 16,
-                    ),
-                  ),
-                },
-                groupValue: periodSliding,
-                onValueChanged: (int? index) {
-                  setState(() {
-                    periodSliding = index;
-                    savePeriod();
-                    widget.popoverButton;
-                  });
-                },
-                backgroundColor: Theme.of(context).colorScheme.secondary,
-                thumbColor: Theme.of(context).colorScheme.primary,
-                padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 3),
-              ),
-            ),
-            const SizedBox(height: 25),
-            Row(
-              children: [
-                const Spacer(),
-                Checkbox(
-                  activeColor: Theme.of(context).colorScheme.secondary,
-                  side: const BorderSide(color: Colors.grey),
-                  value: withPM,
-                  onChanged: (value) => savePM(value),
-                ),
-                Text(
-                  'Использовать + и - для оценок',
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.displaySmall?.color,
-                    fontSize: 18,
-                  ),
-                ),
-                const Spacer(),
-              ],
-            ),
-            const SizedBox(height: 15),
-            GestureDetector(
-              onTap: () => showLogoutDialog(context),
-              behavior: HitTestBehavior.opaque,
-              child: AnimatedContainer(
-                height: 40,
-                margin: const EdgeInsets.symmetric(horizontal: 100.0),
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(10.0),
-                ),
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeInOut,
-                child: const Center(
-                  child: Text(
-                    'Выйти из аккаунта',
-                    style: TextStyle(fontSize: 18, color: Colors.white),
-                  ),
-                ),
-              ),
-            ),
-            const Spacer(),
-            Text(
-              'Связаться с разработчиком',
-              style: TextStyle(
-                fontSize: 18,
-                color: Theme.of(context).textTheme.displaySmall?.color,
-              ),
-            ),
-            const SizedBox(height: 15),
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                MyIconButton(path: 'lib/images/telegram_icon.png', type: 0),
-                SizedBox(width: 100),
-                MyIconButton(path: 'lib/images/mail_icon.png', type: 1),
-              ],
-            ),
-            const SizedBox(height: 15),
-          ],
-        ),
+    );
+  }
+
+  ButtonStyle _segmentedStyle(ColorScheme scheme) {
+    return ButtonStyle(
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+      ),
+      textStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 13)),
+      foregroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? scheme.onPrimary
+            : scheme.onSurface,
+      ),
+      backgroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? scheme.primary
+            : scheme.surfaceContainer,
       ),
     );
   }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+        child: Text(
+          text,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: AppThemeColors.scaffoldText(context),
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+      );
+}
+
+class _Surface extends StatelessWidget {
+  const _Surface({required this.child, this.padding = const EdgeInsets.all(8)});
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Theme.of(context).colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(padding: padding, child: child),
+      );
 }
