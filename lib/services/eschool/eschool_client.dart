@@ -102,8 +102,8 @@ class EschoolClient {
         normalizeEschoolLogin(username),
       );
     } on Object {
-      sessionState = EschoolSessionState.unavailable;
-      return const AuthenticationOutcome(AuthenticationResult.unavailable);
+      sessionState = EschoolSessionState.storageFailure;
+      return const AuthenticationOutcome(AuthenticationResult.storageFailure);
     }
 
     final http.Response response;
@@ -564,6 +564,7 @@ enum EschoolSessionState {
   rateLimited,
   unavailable,
   mfaRequired,
+  storageFailure,
 }
 
 enum SessionValidation { valid, expired, forbidden, rateLimited, unavailable }
@@ -575,6 +576,7 @@ enum AuthenticationResult {
   rateLimited,
   unavailable,
   mfaRequired,
+  storageFailure,
 }
 
 AuthenticationResult _loginResultForStatus(int statusCode) {
@@ -601,6 +603,8 @@ EschoolSessionState _sessionStateForAuthentication(
       return EschoolSessionState.unavailable;
     case AuthenticationResult.mfaRequired:
       return EschoolSessionState.mfaRequired;
+    case AuthenticationResult.storageFailure:
+      return EschoolSessionState.storageFailure;
   }
 }
 

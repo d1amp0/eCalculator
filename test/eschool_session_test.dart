@@ -61,6 +61,28 @@ void main() {
       expect(await _login(timeout), LoginResult.unavailable);
     });
 
+    test('classifies device identity failure as local storage failure',
+        () async {
+      var requests = 0;
+      final session = EschoolSession(
+        authStorage: MemoryAuthStorage(),
+        clientFactory: ({required username, required password}) =>
+            EschoolClient.fromPassword(
+          username: username,
+          password: password,
+          deviceIdentityStore: _FailingIdentityStore(),
+          httpClient: MockClient((request) async {
+            requests++;
+            return http.Response('{}', 500);
+          }),
+        ),
+      );
+
+      expect(await _login(session), LoginResult.storageFailure);
+      expect(session.state, EschoolSessionState.storageFailure);
+      expect(requests, 0);
+    });
+
     test('returns a structured MFA_REQUIRED foreground result', () async {
       final session = _sessionForResponses([
         http.Response(
@@ -98,6 +120,23 @@ void main() {
       expect(session.isAuthenticated, isTrue);
       expect(storage.value, isNot(contains('credentialHash')));
       expect(storage.value, isNot(contains('derived')));
+    });
+
+    test('keeps credentials and cookies out of SharedPreferences', () async {
+      SharedPreferences.setMockInitialValues({'theme': 2});
+      final storage = MemoryAuthStorage();
+      final session = _successfulSession(storage);
+
+      expect(
+        await _login(session, rememberMe: true),
+        LoginResult.authenticated,
+      );
+
+      final preferences = await SharedPreferences.getInstance();
+      expect(preferences.getKeys(), {'theme'});
+      expect(storage.value, contains('JSESSIONID'));
+      expect(storage.value, isNot(contains('password')));
+      expect(storage.value, isNot(contains('credentialHash')));
     });
 
     test(
@@ -411,6 +450,13 @@ class _FixedIdentityStore implements EschoolDeviceIdentityStore {
         pushToken:
             '1234567890123456789012345678901234567890123456789012345678901234',
       );
+}
+
+class _FailingIdentityStore implements EschoolDeviceIdentityStore {
+  @override
+  Future<EschoolDeviceIdentity> identityFor(String normalizedLogin) {
+    throw StateError('private secure-storage failure detail');
+  }
 }
 
 class MemoryAuthStorage implements AuthStorage {

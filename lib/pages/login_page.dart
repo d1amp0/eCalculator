@@ -123,8 +123,8 @@ class _LoginPageState extends State<LoginPage> {
           case LoginResult.storageFailure:
             showErrorLogin(
               context,
-              message: 'Не удалось безопасно обновить данные входа. '
-                  'Попробуйте ещё раз.',
+              message: 'Не удалось получить доступ к безопасному хранилищу. '
+                  'Проверьте системные разрешения и попробуйте ещё раз.',
             );
             return;
         }

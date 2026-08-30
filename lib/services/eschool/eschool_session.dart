@@ -144,6 +144,8 @@ class EschoolSession {
         return LoginResult.rateLimited;
       case AuthenticationResult.mfaRequired:
         return LoginResult.mfaRequired;
+      case AuthenticationResult.storageFailure:
+        return LoginResult.storageFailure;
       case AuthenticationResult.authenticated:
         break;
     }

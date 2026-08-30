@@ -177,6 +177,28 @@ void main() {
   });
 
   group('foreground login', () {
+    test('classifies device identity storage failure as local storage failure',
+        () async {
+      var requests = 0;
+      final events = <String>[];
+      final client = EschoolClient.fromPassword(
+        username: 'student',
+        password: 'password',
+        deviceIdentityStore: _FailingIdentityStore(),
+        diagnostics: EschoolDiagnostics(enabled: true, sink: events.add),
+        httpClient: MockClient((request) async {
+          requests++;
+          return http.Response('{}', 500);
+        }),
+      );
+
+      final outcome = await client.authenticate();
+      expect(outcome.result, AuthenticationResult.storageFailure);
+      expect(client.sessionState, EschoolSessionState.storageFailure);
+      expect(requests, 0);
+      expect(events, isEmpty);
+    });
+
     test('uses SHA-256 and current persistent device shape', () async {
       final identityStore = _CountingIdentityStore();
       final devices = <Map<String, dynamic>>[];
@@ -635,6 +657,13 @@ class _CountingIdentityStore implements EschoolDeviceIdentityStore {
       deviceId: deviceId,
       pushToken: pushToken,
     );
+  }
+}
+
+class _FailingIdentityStore implements EschoolDeviceIdentityStore {
+  @override
+  Future<EschoolDeviceIdentity> identityFor(String normalizedLogin) {
+    throw StateError('private secure-storage failure detail');
   }
 }
 
