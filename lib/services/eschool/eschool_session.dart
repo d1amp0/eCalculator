@@ -13,7 +13,6 @@ enum LoginResult {
   forbidden,
   rateLimited,
   mfaRequired,
-  captchaRequired,
   storageFailure,
 }
 
@@ -145,8 +144,6 @@ class EschoolSession {
         return LoginResult.rateLimited;
       case AuthenticationResult.mfaRequired:
         return LoginResult.mfaRequired;
-      case AuthenticationResult.captchaRequired:
-        return LoginResult.captchaRequired;
       case AuthenticationResult.authenticated:
         break;
     }
@@ -189,7 +186,7 @@ class EschoolSession {
     _remembered = false;
     _state = EschoolSessionState.expired;
     _mfaChallenge = null;
-    oldClient?.clearSession();
+    await oldClient?.clearSession();
   }
 
   Future<void> _persistCurrentSession() async {

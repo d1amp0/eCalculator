@@ -113,13 +113,6 @@ class _LoginPageState extends State<LoginPage> {
                   'Поддержка EMAIL/TOTP будет добавлена отдельно.',
             );
             return;
-          case LoginResult.captchaRequired:
-            showErrorLogin(
-              context,
-              message: 'eSchool запросил CAPTCHA. Войдите через официальный '
-                  'сайт и попробуйте снова позже.',
-            );
-            return;
           case LoginResult.unavailable:
             showErrorLogin(
               context,

@@ -57,5 +57,5 @@ class EschoolDataSource implements StudentDataSource {
   }
 
   @override
-  Future<void> reset() async {}
+  Future<void> reset() => _session.client.invalidateAcademicMetadata();
 }

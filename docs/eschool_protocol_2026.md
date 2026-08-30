@@ -408,17 +408,28 @@ Recommended eCalculator policy:
 | Data | Suggested policy | Invalidate when | Evidence |
 |---|---|---|---|
 | `/state` identity/current position | current session only | logout, 401, account/position change | authoritative session bootstrap |
-| academic years | 24 hours, stale-while-revalidate in foreground | year boundary, state/org change, manual refresh | semi-static; official memory cache |
-| classes | 12–24 hours | year/state/account change | official per-user memory cache |
-| periods | 12–24 hours; refresh near period boundaries | class/year change, current date crosses known boundary | structurally semi-static |
-| subject ID/name projection | 6–24 hours | period/class change or unseen `unitId` | names static, but same response has dynamic totals |
+| academic years | persistent, 30 days | session identity/org/protocol change, manual refresh | semi-static; official memory cache |
+| classes | persistent, 30 days | session identity/org/year/protocol change, manual refresh | official per-user memory cache |
+| periods | persistent, 30 days | class/year/session/protocol change, manual refresh | structurally semi-static |
+| subject ID/name projection | persistent, 24 hours | period/class/session/protocol change or unseen `unitId` | names static, but same response has dynamic totals |
 | totals/rating from `getDiaryUnits` | do not inherit long subject cache | each foreground grade refresh | dynamic aggregate data |
 | marks snapshot | last successful snapshot only | each explicit/background check | dynamic diff source |
 | diary/homework | 15–60 minutes plus manual refresh | date range changes, relevant event hint | deadline/completion data changes |
-| mark/dictionary metadata | 24 hours to app-version change | build/version or school marking configuration change | official memory/local caching |
+| mark/dictionary metadata | persistent, 7 days | session/protocol/configuration change, manual refresh | official memory/local caching |
 
-Store display metadata separately from dynamic totals so a long-lived subject
-cache never freezes averages or final grades.
+eCalculator implements this as a memory-fronted, versioned SharedPreferences
+cache containing only typed display metadata. Cache keys include a hashed,
+normalized account identity plus user, current position, organization, relevant
+year/group/period identifiers, and schema/protocol versions. Corrupt or
+version-mismatched entries are discarded. Logout, session identity changes,
+and explicit academic-metadata invalidation clear both memory and persistence;
+device identity is kept separate.
+
+Dynamic totals, averages, grades, homework, credentials, cookies, MFA tokens,
+and raw private responses are never persisted in this cache. Every explicit
+grade refresh still calls `getDiaryPeriod_`; once the metadata projection is
+warm, that preserves a future one-request grade-check path without adding a
+worker or notification behavior here.
 
 ## 11. Notification/live-update architecture
 

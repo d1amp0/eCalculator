@@ -59,6 +59,13 @@ class EschoolAcademicYear {
   final DateTime? startDate;
   final DateTime? endDate;
 
+  Map<String, Object?> toJson() => {
+        'yearId': yearId,
+        'name': name,
+        'startDate': startDate?.toIso8601String(),
+        'endDate': endDate?.toIso8601String(),
+      };
+
   String? get displayName {
     final start = startDate;
     if (start != null) {
@@ -69,6 +76,18 @@ class EschoolAcademicYear {
     final years = RegExp(r'(\d{4}).*?(\d{4})').firstMatch(explicit);
     if (years != null) return '${years.group(1)}/${years.group(2)}';
     return explicit;
+  }
+
+  bool matchesYears(int startYear, int endYear) {
+    final start = startDate?.year;
+    final end = endDate?.year;
+    if (start != null) {
+      return start == startYear && (end ?? start + 1) == endYear;
+    }
+    final label = displayName;
+    return label != null &&
+        label.contains('$startYear') &&
+        label.contains('$endYear');
   }
 
   static EschoolAcademicYear? tryParse(Object? value) {
@@ -82,7 +101,7 @@ class EschoolAcademicYear {
         map['name'] ?? map['yearName'] ?? map['academYearName'],
       ),
       startDate: eschoolDateTime(
-        map['begDate'] ?? map['date1'] ?? map['begDateStr'],
+        map['startDate'] ?? map['begDate'] ?? map['date1'] ?? map['begDateStr'],
       ),
       endDate: eschoolDateTime(
         map['endDate'] ?? map['date2'] ?? map['endDateStr'],
@@ -104,6 +123,13 @@ class EschoolClassInfo {
   final DateTime? startDate;
   final DateTime? endDate;
 
+  Map<String, Object?> toJson() => {
+        'groupId': groupId,
+        'yearId': yearId,
+        'startDate': startDate?.toIso8601String(),
+        'endDate': endDate?.toIso8601String(),
+      };
+
   static EschoolClassInfo? tryParse(Object? value) {
     final map = eschoolMap(value);
     if (map == null) return null;
@@ -112,7 +138,9 @@ class EschoolClassInfo {
     return EschoolClassInfo(
       groupId: groupId,
       yearId: eschoolString(map['yearId']),
-      startDate: eschoolDateTime(map['begDate'] ?? map['begDateStr']),
+      startDate: eschoolDateTime(
+        map['startDate'] ?? map['begDate'] ?? map['begDateStr'],
+      ),
       endDate: eschoolDateTime(map['endDate'] ?? map['endDateStr']),
     );
   }
@@ -120,6 +148,16 @@ class EschoolClassInfo {
   bool belongsToDisplayYear(String displayYear) {
     final startYear = int.tryParse(displayYear.split('/').first);
     return startYear != null && startDate?.year == startYear;
+  }
+
+  bool belongsToAcademicYear(
+    EschoolAcademicYear? academicYear,
+    int startYear,
+  ) {
+    if (academicYear != null && yearId != null) {
+      return yearId == academicYear.yearId;
+    }
+    return startDate?.year == startYear;
   }
 }
 
@@ -136,6 +174,13 @@ class EschoolPeriod {
   final DateTime? startDate;
   final DateTime? endDate;
 
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'name': name,
+        'startDate': startDate?.toIso8601String(),
+        'endDate': endDate?.toIso8601String(),
+      };
+
   static EschoolPeriod? tryParse(Object? value) {
     final map = eschoolMap(value);
     if (map == null) return null;
@@ -145,8 +190,8 @@ class EschoolPeriod {
     return EschoolPeriod(
       id: id,
       name: name,
-      startDate: eschoolDateTime(map['date1']),
-      endDate: eschoolDateTime(map['date2']),
+      startDate: eschoolDateTime(map['startDate'] ?? map['date1']),
+      endDate: eschoolDateTime(map['endDate'] ?? map['date2']),
     );
   }
 }
@@ -165,6 +210,13 @@ class EschoolSubjectMetadata {
   final String unitName;
   final String? markSystemId;
   final String? markSystemCode;
+
+  Map<String, Object?> toJson() => {
+        'unitId': unitId,
+        'unitName': unitName,
+        'markSysId': markSystemId,
+        'markSysCode': markSystemCode,
+      };
 
   static EschoolSubjectMetadata? tryParse(Object? value) {
     final map = eschoolMap(value);

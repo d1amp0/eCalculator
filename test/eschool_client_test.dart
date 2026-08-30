@@ -49,6 +49,70 @@ void main() {
       expect(requests, 1);
     });
 
+    test('identity changes clear persistent metadata but not device identity',
+        () async {
+      final store = _MemoryMetadataStore();
+      final cache = EschoolMetadataCache(store: store);
+      const key = EschoolCacheKey('subjects', 'old-session');
+      final codec = EschoolCacheCodec<String>(
+        encode: (value) => value,
+        decode: (value) => value! as String,
+      );
+      await cache.put(key, 'cached', const Duration(days: 1), codec);
+      final identityStore = _CountingIdentityStore();
+      final client = EschoolClient(
+        username: 'student',
+        credentialHash: null,
+        userId: 42,
+        positionId: 'position-1',
+        organizationId: 'organization-1',
+        cookies: const {'JSESSIONID': 'saved-session'},
+        httpClient: MockClient(
+          (_) async => _jsonResponse({
+            'authenticated': true,
+            'userId': 42,
+            'user': {
+              'currentPosition': {
+                'positionId': 'position-2',
+                'orgnum': 'organization-2',
+              },
+            },
+          }),
+        ),
+        deviceIdentityStore: identityStore,
+        cache: cache,
+      );
+
+      expect(await client.validateSession(), SessionValidation.valid);
+      expect(store.value, isNull);
+      expect(identityStore.logins, isEmpty);
+    });
+
+    test('logout clears persistent metadata but not device identity', () async {
+      final store = _MemoryMetadataStore();
+      final cache = EschoolMetadataCache(store: store);
+      const key = EschoolCacheKey('subjects', 'current-session');
+      final codec = EschoolCacheCodec<String>(
+        encode: (value) => value,
+        decode: (value) => value! as String,
+      );
+      await cache.put(key, 'cached', const Duration(days: 1), codec);
+      final identityStore = _CountingIdentityStore();
+      final client = EschoolClient(
+        username: 'student',
+        credentialHash: null,
+        cookies: const {'JSESSIONID': 'saved-session'},
+        httpClient: MockClient((_) async => _jsonResponse({})),
+        deviceIdentityStore: identityStore,
+        cache: cache,
+      );
+
+      await client.clearSession();
+      expect(store.value, isNull);
+      expect(client.cookies, isEmpty);
+      expect(identityStore.logins, isEmpty);
+    });
+
     for (final status in [401, 403, 429]) {
       test('$status never logs in or retries', () async {
         var requests = 0;
@@ -222,6 +286,26 @@ void main() {
       expect(events.join(), isNot(contains(_CountingIdentityStore.deviceId)));
       expect(events.join(), isNot(contains(_CountingIdentityStore.pushToken)));
     });
+
+    test('does not claim CAPTCHA detection without a response contract',
+        () async {
+      final client = EschoolClient.fromPassword(
+        username: 'student',
+        password: 'password',
+        deviceIdentityStore: _CountingIdentityStore(),
+        httpClient: MockClient((request) async {
+          return http.Response(
+            jsonEncode({'code': 'CAPTCHA_REQUIRED'}),
+            409,
+          );
+        }),
+      );
+
+      final outcome = await client.authenticate();
+      expect(outcome.result, AuthenticationResult.unavailable);
+      expect(client.sessionState, EschoolSessionState.unavailable);
+      expect(EschoolProtocol.captchaResponseContractObserved, isFalse);
+    });
   });
 
   group('current grades protocol', () {
@@ -313,6 +397,49 @@ void main() {
       expect(unitRequests, 1);
       expect(gradeRequests, 2);
     });
+
+    test('unknown unitId invalidates and refetches the subject projection',
+        () async {
+      var unitRequests = 0;
+      var gradeRequests = 0;
+      final client = _restoredClient(
+        MockClient((request) async {
+          if (request.url.path.endsWith('/getDiaryUnits/')) {
+            unitRequests++;
+            return _jsonResponse({
+              'result': [
+                if (unitRequests == 1)
+                  {'unitId': 10, 'unitName': 'Алгебра'}
+                else
+                  {'unitId': 99, 'unitName': 'Физика'},
+              ],
+            });
+          }
+          gradeRequests++;
+          return _jsonResponse({
+            'result': [
+              {
+                'lessonId': 100,
+                'unitId': 99,
+                'part': [
+                  {
+                    'partId': 200,
+                    'mark': [
+                      {'markValue': '5'},
+                    ],
+                  },
+                ],
+              },
+            ],
+          });
+        }),
+      );
+
+      final grades = await client.grades('7');
+      expect(unitRequests, 2);
+      expect(gradeRequests, 1);
+      expect(grades.single.subject.unitName, 'Физика');
+    });
   });
 
   group('structured academic metadata', () {
@@ -340,11 +467,48 @@ void main() {
       expect(requests, 1);
     });
 
+    test('academic years survive new cache and client instances', () async {
+      final store = _MemoryMetadataStore();
+      var requests = 0;
+      http.Client httpClient() => MockClient((request) async {
+            requests++;
+            return _jsonResponse([
+              {
+                'yearId': 26,
+                'begDate': '2026-09-01',
+                'endDate': '2027-05-31',
+              },
+            ]);
+          });
+
+      final first = _restoredClient(
+        httpClient(),
+        cache: EschoolMetadataCache(store: store),
+      );
+      expect(await first.academicYears(), ['2026/2027']);
+
+      final afterRestart = _restoredClient(
+        httpClient(),
+        cache: EschoolMetadataCache(store: store),
+      );
+      expect(await afterRestart.academicYears(), ['2026/2027']);
+      expect(requests, 1);
+    });
+
     test('resolves class and period from decoded IDs and dates', () async {
       final paths = <String>[];
       final client = _restoredClient(
         MockClient((request) async {
           paths.add(request.url.path);
+          if (request.url.path.endsWith('/yearplan/academyears')) {
+            return _jsonResponse([
+              {
+                'yearId': 26,
+                'begDate': '2026-09-01',
+                'endDate': '2027-05-31',
+              },
+            ]);
+          }
           if (request.url.path.endsWith('/usr/getClassByUser')) {
             return http.Response(
               jsonEncode([
@@ -371,7 +535,13 @@ void main() {
       );
 
       expect(await client.periodId('2026/20271 четверть'), '88');
+      expect(await client.periodId('2026–2027 • 1 четверть'), '88');
+      expect(
+        await client.periodId('2026-27 учебный год — 1 четверть'),
+        '88',
+      );
       expect(paths, [
+        '/ec-server/yearplan/academyears',
         '/ec-server/usr/getClassByUser',
         '/ec-server/dict/periods/0',
       ]);
@@ -424,41 +594,6 @@ void main() {
     expect(items.single[1], 'Алгебра');
     expect(items.single[3], 'Решить задачу');
   });
-
-  group('metadata cache', () {
-    test('hit, expiry, scope isolation, and invalidation are explicit',
-        () async {
-      var now = DateTime(2026, 8, 30, 12);
-      final cache = EschoolMetadataCache(clock: () => now);
-      var loads = 0;
-      Future<String> load() async => 'value-${++loads}';
-      const accountA =
-          EschoolCacheKey('subjects', 'account-a|class-1|period-1');
-      const accountB =
-          EschoolCacheKey('subjects', 'account-b|class-1|period-1');
-
-      expect(
-        await cache.getOrLoad(accountA, const Duration(hours: 1), load),
-        'value-1',
-      );
-      expect(
-        await cache.getOrLoad(accountA, const Duration(hours: 1), load),
-        'value-1',
-      );
-      expect(
-        await cache.getOrLoad(accountB, const Duration(hours: 2), load),
-        'value-2',
-      );
-      now = now.add(const Duration(hours: 1));
-      expect(
-        await cache.getOrLoad(accountA, const Duration(hours: 1), load),
-        'value-3',
-      );
-      cache.invalidate(accountA);
-      expect(cache.get<String>(accountA), isNull);
-      expect(cache.get<String>(accountB), 'value-2');
-    });
-  });
 }
 
 http.Response _jsonResponse(Object? value, [int statusCode = 200]) =>
@@ -471,6 +606,7 @@ http.Response _jsonResponse(Object? value, [int statusCode = 200]) =>
 EschoolClient _restoredClient(
   http.Client httpClient, {
   Duration requestTimeout = eschoolRequestTimeout,
+  EschoolMetadataCache? cache,
 }) {
   return EschoolClient(
     username: 'student',
@@ -481,6 +617,7 @@ EschoolClient _restoredClient(
     requestTimeout: requestTimeout,
     httpClient: httpClient,
     deviceIdentityStore: _CountingIdentityStore(),
+    cache: cache ?? EschoolMetadataCache(store: _MemoryMetadataStore()),
   );
 }
 
@@ -511,4 +648,17 @@ class _MemoryDeviceValueStore implements EschoolDeviceValueStore {
   Future<void> write(String key, String value) async {
     values[key] = value;
   }
+}
+
+class _MemoryMetadataStore implements EschoolMetadataStore {
+  String? value;
+
+  @override
+  Future<void> clear() async => value = null;
+
+  @override
+  Future<String?> read() async => value;
+
+  @override
+  Future<void> write(String value) async => this.value = value;
 }

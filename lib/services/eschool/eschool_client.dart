@@ -191,7 +191,7 @@ class EschoolClient {
             sessionState = EschoolSessionState.expired;
             return SessionValidation.expired;
           }
-          _updateSessionIdentity(decoded);
+          await _updateSessionIdentity(decoded);
           if (userId == null) {
             sessionState = EschoolSessionState.unavailable;
             return SessionValidation.unavailable;
@@ -221,11 +221,7 @@ class EschoolClient {
       _decodeMap(await _get(_uri(EschoolProtocol.state)));
 
   Future<List<String>> academicYears() async {
-    final years = await _cache.getOrLoad<List<EschoolAcademicYear>>(
-      EschoolCacheKey('academic-years', _accountScope),
-      EschoolCachePolicy.academicYears,
-      _loadAcademicYears,
-    );
+    final years = await _academicYearModels();
     final names = years.map((year) => year.displayName).whereType<String>();
     final unique = names.toSet().toList()..sort((a, b) => b.compareTo(a));
     if (unique.isNotEmpty) return unique;
@@ -239,26 +235,31 @@ class EschoolClient {
   }
 
   Future<String?> periodId(String combinedName) async {
-    if (combinedName.length < 9) return null;
-    final yearName = combinedName.substring(0, 9);
-    final periodName = combinedName.substring(9);
-    final classes = await _classesForUser();
-    EschoolClassInfo? classInfo;
-    for (final item in classes) {
-      if (item.belongsToDisplayYear(yearName)) {
-        classInfo = item;
-        break;
-      }
+    final selection = _PeriodSelection.tryParse(combinedName);
+    if (selection == null) return null;
+    final years = await _academicYearModels();
+    final academicYear = _firstWhereOrNull(
+      years,
+      (year) => year.matchesYears(selection.startYear, selection.endYear),
+    );
+
+    var classes = await _classesForUser();
+    var classInfo = _matchingClass(classes, academicYear, selection.startYear);
+    if (classInfo == null) {
+      await _cache.invalidate(_classesKey);
+      classes = await _classesForUser();
+      classInfo = _matchingClass(classes, academicYear, selection.startYear);
     }
     if (classInfo == null) return null;
-    final periods = await _periodsForGroup(classInfo.groupId);
-    for (final period in periods) {
-      if (period.name == periodName ||
-          _decodeLegacyText(period.name) == periodName) {
-        return period.id;
-      }
+
+    var periods = await _periodsForGroup(classInfo.groupId);
+    var period = _matchingPeriod(periods, selection.periodName);
+    if (period == null) {
+      await _cache.invalidate(_periodsKey(classInfo.groupId));
+      periods = await _periodsForGroup(classInfo.groupId);
+      period = _matchingPeriod(periods, selection.periodName);
     }
-    return null;
+    return period?.id;
   }
 
   Future<List<EschoolResolvedGrade>> grades(String periodId) async {
@@ -272,9 +273,7 @@ class EschoolClient {
     final response = EschoolGradesResponse.fromJson(gradesJson);
     var byId = {for (final subject in subjects) subject.unitId: subject};
     if (response.lessons.any((lesson) => !byId.containsKey(lesson.unitId))) {
-      _cache.invalidate(
-        EschoolCacheKey('subjects', '$_accountScope|$periodId'),
-      );
+      await _cache.invalidate(_subjectsKey(periodId));
       subjects = await _subjectsForPeriod(periodId);
       byId = {for (final subject in subjects) subject.unitId: subject};
     }
@@ -339,16 +338,25 @@ class EschoolClient {
     return result;
   }
 
-  void invalidateAcademicMetadata() => _cache.clear();
+  Future<void> invalidateAcademicMetadata() => _cache.clear();
 
-  void clearSession() {
+  Future<void> clearSession() async {
     _cookies.clear();
     userId = null;
     positionId = null;
     organizationId = null;
     sessionState = EschoolSessionState.expired;
     _sessionUse = _freshLogin;
-    _cache.clear();
+    await _cache.clear();
+  }
+
+  Future<List<EschoolAcademicYear>> _academicYearModels() {
+    return _cache.getOrLoad<List<EschoolAcademicYear>>(
+      _academicYearsKey,
+      EschoolCachePolicy.academicYears,
+      _academicYearsCodec,
+      _loadAcademicYears,
+    );
   }
 
   Future<List<EschoolAcademicYear>> _loadAcademicYears() async {
@@ -361,8 +369,9 @@ class EschoolClient {
 
   Future<List<EschoolClassInfo>> _classesForUser() {
     return _cache.getOrLoad<List<EschoolClassInfo>>(
-      EschoolCacheKey('classes', _accountScope),
+      _classesKey,
       EschoolCachePolicy.classes,
+      _classesCodec,
       () async {
         final value = await _getJson(
           _uri(
@@ -380,8 +389,9 @@ class EschoolClient {
 
   Future<List<EschoolPeriod>> _periodsForGroup(String groupId) {
     return _cache.getOrLoad<List<EschoolPeriod>>(
-      EschoolCacheKey('periods', '$_accountScope|$groupId'),
+      _periodsKey(groupId),
       EschoolCachePolicy.periods,
+      _periodsCodec,
       () async {
         final value = await _getJson(
           _uri(EschoolProtocol.periods, query: {'groupId': groupId}),
@@ -396,8 +406,9 @@ class EschoolClient {
 
   Future<List<EschoolSubjectMetadata>> _subjectsForPeriod(String periodId) {
     return _cache.getOrLoad<List<EschoolSubjectMetadata>>(
-      EschoolCacheKey('subjects', '$_accountScope|$periodId'),
+      _subjectsKey(periodId),
       EschoolCachePolicy.subjects,
+      _subjectsCodec,
       () async {
         final value = await _getJson(
           _uri(
@@ -413,9 +424,24 @@ class EschoolClient {
     );
   }
 
-  String get _accountScope =>
-      '${EschoolProtocol.clientVersion}|${normalizeEschoolLogin(username)}|'
-      '${userId ?? '-'}|${positionId ?? '-'}|${organizationId ?? '-'}';
+  EschoolCacheKey get _academicYearsKey =>
+      EschoolCacheKey('academic-years', _accountScope);
+
+  EschoolCacheKey get _classesKey => EschoolCacheKey('classes', _accountScope);
+
+  EschoolCacheKey _periodsKey(String groupId) =>
+      EschoolCacheKey('periods', '$_accountScope|group:$groupId');
+
+  EschoolCacheKey _subjectsKey(String periodId) =>
+      EschoolCacheKey('subjects', '$_accountScope|period:$periodId');
+
+  String get _accountScope {
+    final accountHash =
+        sha256.convert(utf8.encode(normalizeEschoolLogin(username))).toString();
+    return '${EschoolProtocol.clientVersion}|account:$accountHash|'
+        'user:${userId ?? '-'}|position:${positionId ?? '-'}|'
+        'organization:${organizationId ?? '-'}';
+  }
 
   Future<Object?> _getJson(Uri url) async {
     final response = await _get(url);
@@ -469,7 +495,7 @@ class EschoolClient {
     }
   }
 
-  void _updateSessionIdentity(Map<String, dynamic> state) {
+  Future<void> _updateSessionIdentity(Map<String, dynamic> state) async {
     final previousUserId = userId;
     final previousPositionId = positionId;
     final previousOrganizationId = organizationId;
@@ -488,7 +514,7 @@ class EschoolClient {
         (previousPositionId != null && previousPositionId != positionId) ||
         (previousOrganizationId != null &&
             previousOrganizationId != organizationId)) {
-      _cache.clear();
+      await _cache.clear();
     }
   }
 
@@ -538,7 +564,6 @@ enum EschoolSessionState {
   rateLimited,
   unavailable,
   mfaRequired,
-  captchaRequired,
 }
 
 enum SessionValidation { valid, expired, forbidden, rateLimited, unavailable }
@@ -550,7 +575,6 @@ enum AuthenticationResult {
   rateLimited,
   unavailable,
   mfaRequired,
-  captchaRequired,
 }
 
 AuthenticationResult _loginResultForStatus(int statusCode) {
@@ -577,8 +601,6 @@ EschoolSessionState _sessionStateForAuthentication(
       return EschoolSessionState.unavailable;
     case AuthenticationResult.mfaRequired:
       return EschoolSessionState.mfaRequired;
-    case AuthenticationResult.captchaRequired:
-      return EschoolSessionState.captchaRequired;
   }
 }
 
@@ -616,3 +638,113 @@ String _decodeLegacyText(String value) {
 
 const _freshLogin = 'fresh-login';
 const _restoredSession = 'restored-session';
+
+final _academicYearsCodec = EschoolCacheCodec<List<EschoolAcademicYear>>(
+  encode: (values) => values.map((value) => value.toJson()).toList(),
+  decode: (value) => _decodeModelList(value, EschoolAcademicYear.tryParse),
+);
+
+final _classesCodec = EschoolCacheCodec<List<EschoolClassInfo>>(
+  encode: (values) => values.map((value) => value.toJson()).toList(),
+  decode: (value) => _decodeModelList(value, EschoolClassInfo.tryParse),
+);
+
+final _periodsCodec = EschoolCacheCodec<List<EschoolPeriod>>(
+  encode: (values) => values.map((value) => value.toJson()).toList(),
+  decode: (value) => _decodeModelList(value, EschoolPeriod.tryParse),
+);
+
+final _subjectsCodec = EschoolCacheCodec<List<EschoolSubjectMetadata>>(
+  encode: (values) => values.map((value) => value.toJson()).toList(),
+  decode: (value) => _decodeModelList(value, EschoolSubjectMetadata.tryParse),
+);
+
+List<T> _decodeModelList<T>(
+  Object? value,
+  T? Function(Object? value) parser,
+) {
+  if (value is! List) throw const FormatException('Expected cached list');
+  final parsed = value.map(parser).whereType<T>().toList(growable: false);
+  if (parsed.length != value.length) {
+    throw const FormatException('Invalid cached metadata item');
+  }
+  return parsed;
+}
+
+EschoolClassInfo? _matchingClass(
+  List<EschoolClassInfo> classes,
+  EschoolAcademicYear? year,
+  int startYear,
+) =>
+    _firstWhereOrNull(
+      classes,
+      (item) => item.belongsToAcademicYear(year, startYear),
+    );
+
+EschoolPeriod? _matchingPeriod(
+  List<EschoolPeriod> periods,
+  String requestedName,
+) {
+  final normalizedRequest = _normalizePeriodName(requestedName);
+  return _firstWhereOrNull(
+    periods,
+    (period) =>
+        _normalizePeriodName(period.name) == normalizedRequest ||
+        _normalizePeriodName(_decodeLegacyText(period.name)) ==
+            normalizedRequest,
+  );
+}
+
+T? _firstWhereOrNull<T>(Iterable<T> values, bool Function(T value) matches) {
+  for (final value in values) {
+    if (matches(value)) return value;
+  }
+  return null;
+}
+
+String _normalizePeriodName(String value) => value
+    .trim()
+    .toLowerCase()
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .replaceFirst(RegExp(r'^[\s:;|•—–-]+'), '');
+
+class _PeriodSelection {
+  const _PeriodSelection({
+    required this.startYear,
+    required this.endYear,
+    required this.periodName,
+  });
+
+  final int startYear;
+  final int endYear;
+  final String periodName;
+
+  static _PeriodSelection? tryParse(String value) {
+    final match = RegExp(
+      r'(\d{4})\s*(?:[/\.\-–—]|\s+)\s*(\d{4}|\d{2})',
+    ).firstMatch(value);
+    if (match == null) return null;
+    final startYear = int.parse(match.group(1)!);
+    final rawEndYear = match.group(2)!;
+    final endYear = rawEndYear.length == 2
+        ? (startYear ~/ 100) * 100 + int.parse(rawEndYear)
+        : int.parse(rawEndYear);
+    var periodName = '${value.substring(0, match.start)} '
+            '${value.substring(match.end)}'
+        .trim();
+    periodName = periodName.replaceFirst(
+      RegExp(
+        r'^(?:учебный\s+год|academic\s+year)?\s*[\s:;|•—–-]*',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    periodName = _normalizePeriodName(periodName);
+    if (periodName.isEmpty) return null;
+    return _PeriodSelection(
+      startYear: startYear,
+      endYear: endYear,
+      periodName: periodName,
+    );
+  }
+}
