@@ -331,7 +331,7 @@ void main() {
   });
 
   group('current grades protocol', () {
-    test('uses underscored path and parses nested optional grade fields',
+    test('uses underscored path and parses live nested grade fields',
         () async {
       final paths = <String>[];
       final client = _restoredClient(
@@ -370,11 +370,64 @@ void main() {
       expect(grades[0].part.weight, 2);
       expect(grades[0].mark.value, '5');
       expect(grades[0].mark.markNumber, 1);
+      expect(grades[0].mark.markId, 400);
+      expect(grades[0].mark.markValueId, 500);
+      expect(grades[0].mark.isUpdated, isTrue);
       expect(grades[0].identity.provisionalKey, '100|200|-|1');
       expect(grades[1].mark.criterionUseId, 'criterion-1');
       expect(grades[1].mark.criterionLabel, 'Accuracy');
+      expect(grades[1].mark.markId, 401);
+      expect(grades[1].mark.markValueId, 501);
       expect(grades[2].mark.markNumber, isNull);
       expect(grades[2].mark.teacherName, isNull);
+    });
+
+    test('parses canonical lesPartId and retains production mark IDs', () {
+      final response = EschoolGradesResponse.fromJson({
+        'result': [
+          {
+            'lessonId': 1,
+            'unitId': 2,
+            'part': [
+              {
+                'lesPartId': 3,
+                'mark': [
+                  {
+                    'markId': 4,
+                    'markValId': 5,
+                    'markNum': 6,
+                    'markValue': '5',
+                    'isUpdated': 0,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+
+      final part = response.lessons.single.parts.single;
+      final mark = part.marks.single;
+      expect(part.partId, '3');
+      expect(mark.markId, 4);
+      expect(mark.markValueId, 5);
+      expect(mark.markNumber, 6);
+      expect(mark.isUpdated, isFalse);
+      expect(
+        EschoolGradeMark.tryParse({'markValue': '5', 'isUpdated': true})!
+            .isUpdated,
+        isTrue,
+      );
+    });
+
+    test('retains historical partId compatibility', () {
+      final part = EschoolGradePart.tryParse({
+        'partId': 3,
+        'mark': const [],
+      });
+
+      expect(part, isNotNull);
+      expect(part!.partId, '3');
     });
 
     test('ignores unknown fields and tolerates empty/missing parts', () {

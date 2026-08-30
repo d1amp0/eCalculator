@@ -311,7 +311,9 @@ class EschoolGradePart {
   static EschoolGradePart? tryParse(Object? value) {
     final map = eschoolMap(value);
     if (map == null) return null;
-    final partId = eschoolString(map['partId']);
+    // `lesPartId` is the canonical identifier in the live August 2026
+    // getDiaryPeriod_ response. Keep `partId` only for historical payloads.
+    final partId = eschoolString(map['lesPartId'] ?? map['partId']);
     if (partId == null) return null;
     return EschoolGradePart(
       partId: partId,
@@ -332,6 +334,8 @@ class EschoolGradePart {
 class EschoolGradeMark {
   const EschoolGradeMark({
     required this.value,
+    this.markId,
+    this.markValueId,
     this.markDate,
     this.isUpdated,
     this.criterionUseId,
@@ -341,6 +345,11 @@ class EschoolGradeMark {
   });
 
   final String value;
+  // Both IDs occur in the same live mark object. Their exact roles must be
+  // verified against official frontend behavior before either is used for
+  // notification diff identity.
+  final int? markId;
+  final int? markValueId;
   final DateTime? markDate;
   final bool? isUpdated;
   final String? criterionUseId;
@@ -355,8 +364,10 @@ class EschoolGradeMark {
     if (markValue == null) return null;
     return EschoolGradeMark(
       value: markValue,
+      markId: eschoolInt(map['markId']),
+      markValueId: eschoolInt(map['markValId']),
       markDate: eschoolDateTime(map['markDt']),
-      isUpdated: map['isUpdated'] is bool ? map['isUpdated'] as bool : null,
+      isUpdated: eschoolBool(map['isUpdated']),
       criterionUseId: eschoolString(map['crUseId']),
       criterionLabel: eschoolString(map['crLabel']),
       markNumber: eschoolInt(map['markNum']),
@@ -530,6 +541,25 @@ String? eschoolString(Object? value) {
 
 int? eschoolInt(Object? value) =>
     value is int ? value : int.tryParse(value?.toString() ?? '');
+
+bool? eschoolBool(Object? value) {
+  if (value is bool) return value;
+  if (value is int) {
+    if (value == 0) return false;
+    if (value == 1) return true;
+  }
+  if (value is String) {
+    switch (value.toLowerCase()) {
+      case 'true':
+      case '1':
+        return true;
+      case 'false':
+      case '0':
+        return false;
+    }
+  }
+  return null;
+}
 
 double? eschoolDouble(Object? value) => value is num
     ? value.toDouble()

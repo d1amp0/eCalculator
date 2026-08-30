@@ -5,25 +5,33 @@
       "unitId": 10,
       "classId": 20,
       "startDt": "2026-08-28T08:00:00Z",
+      "subject": "Алгебра",
       "teacherFio": "Sanitized Teacher",
+      "teacherId": 300,
       "part": [
         {
-          "partId": 200,
+          "lesPartId": 200,
           "lptName": "Контрольная",
           "lptColor": "#ffffff",
           "markSysCode": "FIVE",
+          "markSysId": 1,
           "mrkWt": 2,
           "maxpoint": 5,
-          "teacherComm": "Sanitized comment",
+          "isBonus": 0,
+          "isDone": 1,
+          "isVerified": 1,
           "mark": [
             {
+              "markId": 400,
+              "markValId": 500,
+              "markNum": 1,
               "markDt": "2026-08-28T10:00:00Z",
               "markValue": "5",
-              "isUpdated": false,
-              "markNum": 1,
-              "teacherFio": "Sanitized Teacher"
+              "isUpdated": 1
             },
             {
+              "markId": 401,
+              "markValId": 501,
               "markValue": "4",
               "crUseId": "criterion-1",
               "crLabel": "Accuracy",
@@ -31,12 +39,14 @@
               "unknown": "ignored"
             },
             {
+              "markId": 402,
+              "markValId": 502,
               "markValue": "3"
             }
           ]
         },
         {
-          "partId": 201,
+          "lesPartId": 201,
           "mark": []
         }
       ]

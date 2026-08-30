@@ -21,9 +21,9 @@ or cache disposition. Accordingly:
 - **PUBLIC FRONTEND CODE** means behavior defined by the exact JavaScript and
   templates publicly delivered by that same production page. It is strong
   current evidence, but not an observed network transaction.
-- **OBSERVED OFFICIAL NETWORK** evidence is unavailable in this run. Status
-  sequences, response sizes, cookie flags, and actual payload field presence
-  are not invented.
+- **LIVE PRODUCTION EVIDENCE (Windows, privacy-safe)** means an authenticated
+  request was observed without retaining private values, IDs, account data, or
+  response bodies. It establishes endpoint status and field names/types only.
 
 The inspected public artifacts were `env.js` (390 bytes), `scripts.js`
 (5,009,358 bytes), `template-cache.js` (4,313,744 bytes), `modulescore.js`
@@ -70,8 +70,8 @@ future research, not a proven replacement for grade polling.
 The best engineering direction is to update parsing and session boundaries
 first, not implement background work. A background checker can plausibly be
 one `getDiaryPeriod_` request after IDs and subject metadata are cached, but a
-fully reliable grade identity still requires one sanitized response-schema
-capture with network-capable CDP.
+fully reliable grade identity still requires confirmation of the exact roles of
+the observed mark identifiers against official frontend behavior.
 
 ## 2. What changed since legacy eCalculator
 
@@ -236,9 +236,20 @@ The most relevant bootstrap data classes are:
 - Page title: `eSchool - Оценки за период`
 - Declared route query names: `yearId`, `eiId`, `groupId`, `userId`
 - A normal reload restored the page without login.
-- The current August account/period did not expose a usable populated grade
-  grid to safe field-only runtime inspection, so no private values or response
-  body were captured.
+
+### LIVE PRODUCTION EVIDENCE (Windows, privacy-safe)
+
+- `GET /ec-server/student/getDiaryUnits/` returned HTTP 200.
+- `GET /ec-server/student/getDiaryPeriod_` returned HTTP 200 with a populated
+  result (approximately 219 KB). No values, IDs, or response body were retained.
+- The observed field-only response shape was:
+
+```text
+lesson: lessonId, unitId, classId, startDt, subject, teacherFio, teacherId, part[]
+part:   lesPartId, lptName, lptColor, markSysCode, markSysId, mrkWt, maxpoint,
+        isBonus, isDone, isVerified, mark[]
+mark:   markId, markValId, markNum, markValue, markDt, isUpdated
+```
 
 ### PUBLIC FRONTEND CODE
 
@@ -267,9 +278,9 @@ ttlPlanUnitMaxpoint, ignoreFactTotalMaxpoint, sugTotalMark
 
 ```text
 lesson: startDt, lessonId, unitId, classId, teacherFio, tchrs, part[], pres[]
-part:   partId, lptName, lptColor, markSysCode, mrkWt, maxpoint,
+part:   lesPartId (canonical current identifier), lptName, lptColor, markSysCode, mrkWt, maxpoint,
         teacherComm, mark[]
-mark:   markDt, markValue, isUpdated, crUseId, crLabel, teacherFio
+mark:   markId, markValId, markNum, markDt, markValue, isUpdated, crUseId, crLabel, teacherFio
 ```
 
 The controller converts `part.mark` into `part.marks` and `part.marksCr` and
@@ -291,37 +302,40 @@ underscore. It does contain active implementations of `/student/getPrsDiary`,
 
 ## 7. Stable grade identity analysis
 
-The current grid has stable parent identities `lessonId`, `partId`, and
-`unitId`. Criteria marks additionally expose `crUseId`. The diary controller's
+The current grid has stable parent identifiers `lessonId`, `lesPartId`, and
+`unitId`; `partId` is retained only as a defensive historical parser fallback.
+Criteria marks additionally expose `crUseId`. `markNum` is now **LIVE
+CONFIRMED** in a populated `getDiaryPeriod_` response. The diary controller's
 current mark objects are sorted by `partID`, `markNum`, `crLabel`, and
 `crUseId`, which strongly suggests that `markNum` is the disambiguating ordinal
 when multiple marks occur in one lesson part.
 
-`markId` must **not** automatically be treated as a grade-instance ID. In the
-current code, `markId` is visibly used by the mark dictionary to identify a
-value in a grading scale. The student-grades controller and template do not
-reference a mark-instance `markId` or `mktId`.
+`markId` and `markValId` are both **LIVE CONFIRMED** in the same mark object.
+Neither must automatically be treated as a grade-instance ID: their exact
+semantic roles still need verification against official frontend behavior
+before finalizing notification diff identity.
 
 Best currently supported composite key:
 
 ```text
-(lessonId, partId, crUseId-or-null, markNum-if-present)
+(lessonId, lesPartId, crUseId-or-null, markNum-if-present)
 ```
 
 Subject `unitId` and period `eiId` should be included in the snapshot namespace,
 not relied on as the mark's unique identity. Mutable state should include the
 grade value, `markDt`, assessment weight (`mrkWt`), `maxpoint`, and update flag.
 
-Diff rules after a field-only response capture confirms `markNum`:
+Provisional diff rules while mark-ID semantics remain unverified:
 
 - key only in new snapshot → added grade;
 - same key, changed value/weight/maxpoint → changed grade;
 - key only in old snapshot → deleted grade.
 
-If `getDiaryPeriod_` omits both a true mark-instance ID and `markNum`, two equal
-grades in the same part cannot be matched perfectly. A sorted multiset/ordinal
-fallback can detect count changes, but it cannot reliably distinguish edits
-from delete-plus-add. That is the most important remaining schema unknown.
+Until the roles of `markId` and `markValId` are verified, two equal grades in
+the same part cannot be matched perfectly in every case. A sorted
+multiset/ordinal fallback can detect count changes, but it cannot reliably
+distinguish edits from delete-plus-add. That is the most important remaining
+schema uncertainty.
 
 ## 8. Current homework/diary protocol
 
@@ -432,6 +446,12 @@ and raw private responses are never persisted in this cache. Every explicit
 grade refresh still calls `getDiaryPeriod_`; once the metadata projection is
 warm, that preserves a future one-request grade-check path without adding a
 worker or notification behavior here.
+
+The live Windows trace contained three closely spaced
+`/usr/getClassByUser` requests before period resolution. The current local
+`getOrLoad` cache does not coalesce concurrent cold misses, so this is a
+plausible explanation. It is recorded as a later optimization rather than
+changing cache concurrency behavior as part of this narrow schema correction.
 
 ## 11. Notification/live-update architecture
 
@@ -549,7 +569,7 @@ was unavailable.
 | period | `/dict/periods/0` | still used | retain; cache by class/year |
 | subjects | `getDiaryUnits` | still used, contains dynamic aggregates | separate metadata from totals |
 | grades | `getDiaryPeriod` flat shape | `getDiaryPeriod_` nested shape | replace path/parser and add fixtures |
-| stable grade ID | lesson/value-oriented | composite lesson/part/criterion/ordinal; true ID unconfirmed | wait for field-only capture before final diff contract |
+| stable grade ID | lesson/value-oriented | composite lesson/`lesPartId`/criterion/ordinal; `markNum` live-confirmed, mark-ID semantics unconfirmed | verify `markId`/`markValId` roles before final diff contract |
 | diary | `/student/diary?userId` | `getPrsDiary?prsId&d1&d2` | replace path, identity, and schema |
 | homework | derived from diary | dedicated list/detail methods | decide whether diary or dedicated view fits product needs |
 | refresh | eager repeated data loads | route-driven; no grades timer | cache static IDs; explicit refresh/snapshot |
@@ -650,8 +670,8 @@ close these gaps:
 1. actual login/status redirect sequence and `Set-Cookie` names/flags/lifetime;
 2. actual `/state` and grades response byte sizes, cache headers, and timing;
 3. first authenticated request ordering and exact normal-flow counts;
-4. the complete field-only schema of a non-empty `getDiaryPeriod_` mark object,
-   especially true instance ID, `markNum`, and any `mktId`;
+4. the exact frontend semantics of `markId` and `markValId` in a populated
+   `getDiaryPeriod_` mark object, including whether either is an instance ID;
 5. whether `PART_UPDATED` is emitted when a grade is added/changed/deleted and
    whether it is visible to the student account;
 6. whether normal UI refreshes use conditional requests or browser cache;
@@ -687,10 +707,11 @@ reconnection.
 with `GET /ec-server/student/getDiaryUnits/?userId&eiId`.
 
 **E. What is the best stable identifier for a grade?**
-Currently `(lessonId, partId, crUseId-or-null, markNum-if-present)`, namespaced
-by account/period. `markId` is demonstrably a grading-dictionary value in
-current code, not proven as a grade-instance ID. A field-only non-empty response
-capture is still required before freezing the diff contract.
+Currently `(lessonId, lesPartId, crUseId-or-null, markNum-if-present)`,
+namespaced by account/period. `markNum` is live-confirmed. `markId` and
+`markValId` coexist in the live mark object, but neither is proven as a
+grade-instance ID; verify their frontend semantics before freezing the diff
+contract.
 
 **F. Which data can eCalculator cache aggressively?**
 Academic years, classes, periods, mark dictionaries, and the `unitId` → subject
@@ -716,6 +737,6 @@ notifications.
 
 **J. What should we absolutely not do?**
 Do not probe or mutate, rotate identities, bypass controls, retry 403/429, log
-secrets/private bodies, auto-login in background, assume `markId` semantics,
-copy stale third-party cache/retry behavior, add Firebase/backend/WorkManager,
-or change production protocol code before the remaining schema capture.
+secrets/private bodies, auto-login in background, assume `markId` or
+`markValId` semantics, copy stale third-party cache/retry behavior, add
+Firebase/backend/WorkManager, or change production protocol endpoints.
