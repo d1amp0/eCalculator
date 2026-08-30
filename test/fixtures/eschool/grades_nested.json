@@ -1,0 +1,54 @@
+{
+  "result": [
+    {
+      "lessonId": 100,
+      "unitId": 10,
+      "classId": 20,
+      "startDt": "2026-08-28T08:00:00Z",
+      "teacherFio": "Sanitized Teacher",
+      "part": [
+        {
+          "partId": 200,
+          "lptName": "Контрольная",
+          "lptColor": "#ffffff",
+          "markSysCode": "FIVE",
+          "mrkWt": 2,
+          "maxpoint": 5,
+          "teacherComm": "Sanitized comment",
+          "mark": [
+            {
+              "markDt": "2026-08-28T10:00:00Z",
+              "markValue": "5",
+              "isUpdated": false,
+              "markNum": 1,
+              "teacherFio": "Sanitized Teacher"
+            },
+            {
+              "markValue": "4",
+              "crUseId": "criterion-1",
+              "crLabel": "Accuracy",
+              "markNum": 2,
+              "unknown": "ignored"
+            },
+            {
+              "markValue": "3"
+            }
+          ]
+        },
+        {
+          "partId": 201,
+          "mark": []
+        }
+      ]
+    },
+    {
+      "lessonId": 101,
+      "unitId": 10,
+      "part": []
+    },
+    {
+      "lessonId": 102,
+      "unitId": 10
+    }
+  ]
+}

@@ -1,5 +1,4 @@
-import 'dart:convert';
-
+import 'package:ecalculator/domain/mark_calculator.dart';
 import 'package:ecalculator/domain/student_data.dart';
 import 'package:ecalculator/services/eschool/eschool_session.dart';
 import 'package:ecalculator/services/student_data_source.dart';
@@ -14,26 +13,34 @@ class EschoolDataSource implements StudentDataSource {
 
   @override
   Future<String?> periodId(String periodName) async {
-    final value = await _session.client.getEild(periodName);
-    return value.toString() == '400' ? null : value.toString();
+    return _session.client.periodId(periodName);
   }
 
   @override
   Future<SubjectMarks> marks(String periodId) async {
-    final client = _session.client..period = periodId;
-    final response = await client.marksApp();
+    final response = await _session.client.grades(periodId);
     final result = <String, List<StudentMark>>{};
+    final identityOccurrences = <String, int>{};
 
-    for (var index = 0; index < response.length; index++) {
-      final raw = response[index];
-      final subject = _decodeLegacyText(raw[2].toString());
-      final date = raw[3].toString();
+    for (final grade in response) {
+      final value = MarkCalculator.parse(grade.mark.value);
+      if (value == null) continue;
+      final subject = grade.subject.unitName;
+      final protocolKey = grade.identity.provisionalKey;
+      final occurrence = identityOccurrences.update(
+        protocolKey,
+        (value) => value + 1,
+        ifAbsent: () => 0,
+      );
+      final date = grade.mark.markDate ?? grade.lesson.startDate;
       result.putIfAbsent(subject, () => <StudentMark>[]).add(
             StudentMark(
-              id: '$subject-$index',
-              value: (raw[0] as num).toDouble(),
-              weight: (raw[1] as num).toDouble(),
-              date: date.length >= 10 ? date.substring(0, 10) : date,
+              // The occurrence suffix is UI-local collision protection, not
+              // a grade-instance identity contract for notifications.
+              id: '$protocolKey#display-$occurrence',
+              value: value,
+              weight: grade.part.weight ?? 1,
+              date: date == null ? '' : date.toIso8601String().substring(0, 10),
             ),
           );
     }
@@ -51,12 +58,4 @@ class EschoolDataSource implements StudentDataSource {
 
   @override
   Future<void> reset() async {}
-}
-
-String _decodeLegacyText(String value) {
-  try {
-    return utf8.decode(latin1.encode(value));
-  } on Object {
-    return value;
-  }
 }

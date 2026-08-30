@@ -35,11 +35,10 @@ class HomeworkItem {
       );
     }
 
-    final content = rawContent.isEmpty
-        ? ''
-        : deleteColors(utf8.decode(latin1.encode(rawContent)));
+    final content =
+        rawContent.isEmpty ? '' : deleteColors(_decodeLegacyText(rawContent));
     return HomeworkItem(
-      subject: utf8.decode(latin1.encode(raw[1].toString())),
+      subject: _decodeLegacyText(raw[1].toString()),
       content: content,
       preview: content.isEmpty ? '' : extractText(content),
       date: DateTime.fromMillisecondsSinceEpoch(raw[2] as int),
@@ -53,4 +52,12 @@ class HomeworkItem {
   final DateTime date;
   final bool isLocal;
   final int? localId;
+}
+
+String _decodeLegacyText(String value) {
+  try {
+    return utf8.decode(latin1.encode(value));
+  } on Object {
+    return value;
+  }
 }

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:ecalculator/services/eschool/eschool_client.dart';
+import 'package:ecalculator/services/eschool/eschool_device_identity.dart';
 import 'package:ecalculator/services/eschool/eschool_session.dart';
 import 'package:ecalculator/storage/auth_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -60,7 +61,27 @@ void main() {
       expect(await _login(timeout), LoginResult.unavailable);
     });
 
+    test('returns a structured MFA_REQUIRED foreground result', () async {
+      final session = _sessionForResponses([
+        http.Response(
+          jsonEncode({
+            'code': 'MFA_REQUIRED',
+            'challengeToken': 'challenge-secret',
+            'factors': [
+              {'factorId': 'email', 'type': 'EMAIL'},
+            ],
+          }),
+          409,
+        ),
+      ]);
+
+      expect(await _login(session), LoginResult.mfaRequired);
+      expect(session.state, EschoolSessionState.mfaRequired);
+      expect(session.mfaChallenge?.challengeToken, 'challenge-secret');
+    });
+
     test('authenticates after login and state succeed', () async {
+      final storage = MemoryAuthStorage();
       final session = _sessionForResponses([
         http.Response(
           '{}',
@@ -68,10 +89,15 @@ void main() {
           headers: {'set-cookie': 'JSESSIONID=session; Path=/'},
         ),
         http.Response(json.encode({'userId': 42}), 200),
-      ]);
+      ], storage: storage);
 
-      expect(await _login(session), LoginResult.authenticated);
+      expect(
+        await _login(session, rememberMe: true),
+        LoginResult.authenticated,
+      );
       expect(session.isAuthenticated, isTrue);
+      expect(storage.value, isNot(contains('credentialHash')));
+      expect(storage.value, isNot(contains('derived')));
     });
 
     test(
@@ -81,7 +107,11 @@ void main() {
           ..value = _savedAccountA
           ..failWrite = true;
         final session = _sessionForResponses([
-          http.Response('{}', 200),
+          http.Response(
+            '{}',
+            200,
+            headers: {'set-cookie': 'JSESSIONID=session; Path=/'},
+          ),
           http.Response(json.encode({'userId': 42}), 200),
         ], storage: storage);
 
@@ -105,7 +135,11 @@ void main() {
         ..value = _savedAccountA
         ..failClear = true;
       final session = _sessionForResponses([
-        http.Response('{}', 200),
+        http.Response(
+          '{}',
+          200,
+          headers: {'set-cookie': 'JSESSIONID=session; Path=/'},
+        ),
         http.Response(json.encode({'userId': 42}), 200),
       ], storage: storage);
 
@@ -125,7 +159,11 @@ void main() {
         ..failWrite = true
         ..failClear = true;
       final session = _sessionForResponses([
-        http.Response('{}', 200),
+        http.Response(
+          '{}',
+          200,
+          headers: {'set-cookie': 'JSESSIONID=session; Path=/'},
+        ),
         http.Response(json.encode({'userId': 42}), 200),
       ], storage: storage);
 
@@ -210,6 +248,54 @@ void main() {
       expect(storage.clearCalls, 0);
     });
 
+    test('activates a valid saved cookie without login', () async {
+      final storage = MemoryAuthStorage()..value = _savedSession;
+      var requests = 0;
+      final session = EschoolSession(
+        authStorage: storage,
+        restoredClientFactory: _restoredClientFactory(
+          MockClient((request) async {
+            requests++;
+            expect(request.url.path, endsWith('/state'));
+            return http.Response(jsonEncode({'userId': 42}), 200);
+          }),
+        ),
+      );
+
+      expect(await session.restore(), isTrue);
+      expect(session.isAuthenticated, isTrue);
+      expect(session.state, EschoolSessionState.valid);
+      expect(requests, 1);
+      expect(storage.value, isNot(contains('credentialHash')));
+    });
+
+    for (final status in [403, 429]) {
+      test('preserves saved cookie and state after restore status $status',
+          () async {
+        final storage = MemoryAuthStorage()..value = _savedSession;
+        var requests = 0;
+        final session = EschoolSession(
+          authStorage: storage,
+          restoredClientFactory: _restoredClientFactory(
+            MockClient((request) async {
+              requests++;
+              return http.Response('{}', status);
+            }),
+          ),
+        );
+
+        expect(await session.restore(), isFalse);
+        expect(requests, 1);
+        expect(storage.value, _savedSession);
+        expect(
+          session.state,
+          status == 403
+              ? EschoolSessionState.forbidden
+              : EschoolSessionState.rateLimited,
+        );
+      });
+    }
+
     test('clears corrupt saved authentication', () async {
       final storage = MemoryAuthStorage()..value = '{not json';
       final session = EschoolSession(authStorage: storage);
@@ -220,7 +306,7 @@ void main() {
     });
 
     test(
-      'clears saved authentication after rejected reauthentication',
+      'clears an expired saved session without reauthentication',
       () async {
         final storage = MemoryAuthStorage()..value = _savedSession;
         var requests = 0;
@@ -235,7 +321,7 @@ void main() {
         );
 
         expect(await session.restore(), isFalse);
-        expect(requests, 2);
+        expect(requests, 1);
         expect(storage.value, isNull);
         expect(storage.clearCalls, 1);
       },
@@ -293,6 +379,7 @@ EschoolSession _sessionForClient(
       username: username,
       password: password,
       httpClient: httpClient,
+      deviceIdentityStore: _FixedIdentityStore(),
     ),
   );
 }
@@ -300,16 +387,29 @@ EschoolSession _sessionForClient(
 RestoredEschoolClientFactory _restoredClientFactory(http.Client httpClient) {
   return ({
     required username,
-    required credentialHash,
     required cookies,
     required userId,
+    required positionId,
+    required organizationId,
   }) =>
       EschoolClient(
         username: username,
-        credentialHash: credentialHash,
+        credentialHash: null,
         cookies: cookies,
         userId: userId,
+        positionId: positionId,
+        organizationId: organizationId,
         httpClient: httpClient,
+      );
+}
+
+class _FixedIdentityStore implements EschoolDeviceIdentityStore {
+  @override
+  Future<EschoolDeviceIdentity> identityFor(String normalizedLogin) async =>
+      const EschoolDeviceIdentity(
+        deviceId: '12345678901234567890123456789012',
+        pushToken:
+            '1234567890123456789012345678901234567890123456789012345678901234',
       );
 }
 
