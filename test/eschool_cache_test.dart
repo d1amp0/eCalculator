@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:ecalculator/services/eschool/eschool_cache.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -36,9 +35,13 @@ void main() {
       expect(loads, 1);
     });
 
-    test('SharedPreferences backing survives a new cache instance', () async {
-      SharedPreferences.setMockInitialValues({});
-      final first = EschoolMetadataCache();
+    test('SharedPreferencesAsync backing survives a new cache instance',
+        () async {
+      final preferences = _MemoryAsyncPreferences();
+      final store = SharedPreferencesEschoolMetadataStore(
+        preferences: preferences,
+      );
+      final first = EschoolMetadataCache(store: store);
       await first.put(
         _accountA,
         'persisted',
@@ -46,13 +49,19 @@ void main() {
         _stringCodec,
       );
 
-      final afterRestart = EschoolMetadataCache();
-      expect(await afterRestart.get(_accountA, _stringCodec), 'persisted');
-      final preferences = await SharedPreferences.getInstance();
-      expect(
-        preferences.getString(
-          SharedPreferencesEschoolMetadataStore.storageKey,
+      final afterRestart = EschoolMetadataCache(
+        store: SharedPreferencesEschoolMetadataStore(
+          preferences: preferences,
         ),
+      );
+      expect(await afterRestart.get(_accountA, _stringCodec), 'persisted');
+      final recordKey = preferences.values.keys.singleWhere(
+        (key) => key.startsWith(
+          SharedPreferencesEschoolMetadataStore.storagePrefix,
+        ),
+      );
+      expect(
+        preferences.values[recordKey],
         contains('expiresAt'),
       );
     });
@@ -83,7 +92,8 @@ void main() {
     });
 
     test('corrupted persisted data is ignored safely', () async {
-      final store = _MemoryMetadataStore()..value = '{not-json';
+      final store = _MemoryMetadataStore()
+        ..values[_accountA.storageKey] = '{not-json';
       var loads = 0;
       final cache = EschoolMetadataCache(store: store);
 
@@ -176,6 +186,98 @@ void main() {
       expect(await afterRestart.get(_accountA, _stringCodec), isNull);
     });
 
+    test('two loaded cache instances preserve writes to different keys',
+        () async {
+      final preferences = _MemoryAsyncPreferences();
+      final foreground = EschoolMetadataCache(
+        store: SharedPreferencesEschoolMetadataStore(
+          preferences: preferences,
+        ),
+      );
+      final background = EschoolMetadataCache(
+        store: SharedPreferencesEschoolMetadataStore(
+          preferences: preferences,
+        ),
+      );
+      expect(await foreground.get(_accountA, _stringCodec), isNull);
+      expect(await background.get(_accountB, _stringCodec), isNull);
+
+      await foreground.put(
+        _accountA,
+        'foreground',
+        const Duration(days: 30),
+        _stringCodec,
+      );
+      await background.put(
+        _accountB,
+        'background',
+        const Duration(days: 30),
+        _stringCodec,
+      );
+
+      final fresh = EschoolMetadataCache(
+        store: SharedPreferencesEschoolMetadataStore(
+          preferences: preferences,
+        ),
+      );
+      expect(await fresh.get(_accountA, _stringCodec), 'foreground');
+      expect(await fresh.get(_accountB, _stringCodec), 'background');
+    });
+
+    test('invalidating one key preserves records written by another instance',
+        () async {
+      final preferences = _MemoryAsyncPreferences();
+      EschoolMetadataCache cache() => EschoolMetadataCache(
+            store: SharedPreferencesEschoolMetadataStore(
+              preferences: preferences,
+            ),
+          );
+      await cache().put(
+        _accountA,
+        'account-a',
+        const Duration(days: 30),
+        _stringCodec,
+      );
+      await cache().put(
+        _accountB,
+        'account-b',
+        const Duration(days: 30),
+        _stringCodec,
+      );
+
+      await cache().invalidate(_accountA);
+
+      final fresh = cache();
+      expect(await fresh.get(_accountA, _stringCodec), isNull);
+      expect(await fresh.get(_accountB, _stringCodec), 'account-b');
+    });
+
+    test('clear removes only prefixed eSchool metadata preferences', () async {
+      final preferences = _MemoryAsyncPreferences()
+        ..values['unrelated.application.setting'] = 'keep';
+      final cache = EschoolMetadataCache(
+        store: SharedPreferencesEschoolMetadataStore(
+          preferences: preferences,
+        ),
+      );
+      await cache.put(
+        _accountA,
+        'account-a',
+        const Duration(days: 30),
+        _stringCodec,
+      );
+      await cache.put(
+        _accountB,
+        'account-b',
+        const Duration(days: 30),
+        _stringCodec,
+      );
+
+      await cache.clear();
+
+      expect(preferences.values, {'unrelated.application.setting': 'keep'});
+    });
+
     test('clear cannot be undone by an in-flight persistent read', () async {
       final seeded = _MemoryMetadataStore();
       await EschoolMetadataCache(store: seeded).put(
@@ -184,7 +286,7 @@ void main() {
         const Duration(days: 30),
         _stringCodec,
       );
-      final store = _DelayedReadMetadataStore(seeded.value);
+      final store = _DelayedReadMetadataStore(seeded.values);
       final cache = EschoolMetadataCache(store: store);
       final read = cache.get(_accountA, _stringCodec);
       final clear = cache.clear();
@@ -194,7 +296,7 @@ void main() {
       await clear;
 
       expect(await cache.get(_accountA, _stringCodec), isNull);
-      expect(store.value, isNull);
+      expect(store.values, isEmpty);
     });
   });
 
@@ -219,30 +321,65 @@ final _stringCodec = EschoolCacheCodec<String>(
 );
 
 class _MemoryMetadataStore implements EschoolMetadataStore {
-  String? value;
+  _MemoryMetadataStore([Map<String, String>? initialValues])
+      : values = Map.of(initialValues ?? const {});
+
+  final Map<String, String> values;
 
   @override
-  Future<void> clear() async => value = null;
+  Future<void> clear() async => values.clear();
 
   @override
-  Future<String?> read() async => value;
+  Future<Map<String, String>> readAll() async => Map.of(values);
 
   @override
-  Future<void> write(String value) async => this.value = value;
+  Future<void> remove(String key) async => values.remove(key);
+
+  @override
+  Future<void> write(String key, String value) async => values[key] = value;
 }
 
 class _DelayedReadMetadataStore extends _MemoryMetadataStore {
-  _DelayedReadMetadataStore(String? initialValue) {
-    value = initialValue;
-  }
+  _DelayedReadMetadataStore(super.initialValues);
 
   final _readGate = Completer<void>();
 
   void releaseRead() => _readGate.complete();
 
   @override
-  Future<String?> read() async {
+  Future<Map<String, String>> readAll() async {
     await _readGate.future;
-    return value;
+    return super.readAll();
   }
+}
+
+class _MemoryAsyncPreferences implements EschoolAsyncPreferences {
+  final Map<String, Object?> values = {};
+
+  @override
+  Future<void> clear({Set<String>? allowList}) async {
+    if (allowList == null) {
+      values.clear();
+      return;
+    }
+    values.removeWhere((key, _) => allowList.contains(key));
+  }
+
+  @override
+  Future<Map<String, Object?>> getAll({Set<String>? allowList}) async => {
+        for (final entry in values.entries)
+          if (allowList == null || allowList.contains(entry.key))
+            entry.key: entry.value,
+      };
+
+  @override
+  Future<Set<String>> getKeys({Set<String>? allowList}) async => values.keys
+      .where((key) => allowList == null || allowList.contains(key))
+      .toSet();
+
+  @override
+  Future<void> remove(String key) async => values.remove(key);
+
+  @override
+  Future<void> setString(String key, String value) async => values[key] = value;
 }

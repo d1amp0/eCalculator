@@ -84,7 +84,7 @@ void main() {
       );
 
       expect(await client.validateSession(), SessionValidation.valid);
-      expect(store.value, isNull);
+      expect(store.values, isEmpty);
       expect(identityStore.logins, isEmpty);
     });
 
@@ -108,7 +108,7 @@ void main() {
       );
 
       await client.clearSession();
-      expect(store.value, isNull);
+      expect(store.values, isEmpty);
       expect(client.cookies, isEmpty);
       expect(identityStore.logins, isEmpty);
     });
@@ -651,14 +651,17 @@ class _MemoryDeviceValueStore implements EschoolDeviceValueStore {
 }
 
 class _MemoryMetadataStore implements EschoolMetadataStore {
-  String? value;
+  final Map<String, String> values = {};
 
   @override
-  Future<void> clear() async => value = null;
+  Future<void> clear() async => values.clear();
 
   @override
-  Future<String?> read() async => value;
+  Future<Map<String, String>> readAll() async => Map.of(values);
 
   @override
-  Future<void> write(String value) async => this.value = value;
+  Future<void> remove(String key) async => values.remove(key);
+
+  @override
+  Future<void> write(String key, String value) async => values[key] = value;
 }

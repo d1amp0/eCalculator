@@ -20,7 +20,8 @@ class EschoolCacheKey {
   final String kind;
   final String scope;
 
-  String get storageKey => jsonEncode([kind, scope]);
+  String get storageKey =>
+      base64UrlEncode(utf8.encode(jsonEncode([kind, scope])));
 
   @override
   bool operator ==(Object other) =>
@@ -41,36 +42,95 @@ class EschoolCacheCodec<T extends Object> {
 }
 
 abstract interface class EschoolMetadataStore {
-  Future<String?> read();
+  Future<Map<String, String>> readAll();
 
-  Future<void> write(String value);
+  Future<void> write(String key, String value);
+
+  Future<void> remove(String key);
 
   Future<void> clear();
 }
 
+abstract interface class EschoolAsyncPreferences {
+  Future<Set<String>> getKeys({Set<String>? allowList});
+
+  Future<Map<String, Object?>> getAll({Set<String>? allowList});
+
+  Future<void> setString(String key, String value);
+
+  Future<void> remove(String key);
+
+  Future<void> clear({Set<String>? allowList});
+}
+
 class SharedPreferencesEschoolMetadataStore implements EschoolMetadataStore {
-  SharedPreferencesEschoolMetadataStore({SharedPreferences? preferences})
-      : _preferences = preferences;
+  SharedPreferencesEschoolMetadataStore({EschoolAsyncPreferences? preferences})
+      : _preferences = preferences ?? _SharedPreferencesAsyncAdapter();
 
-  static const storageKey = 'eschool.metadata_cache';
+  static const storagePrefix = 'eschool.metadata.v2.';
 
-  final SharedPreferences? _preferences;
+  final EschoolAsyncPreferences _preferences;
 
-  Future<SharedPreferences> get _instance async =>
-      _preferences ?? SharedPreferences.getInstance();
-
-  @override
-  Future<String?> read() async => (await _instance).getString(storageKey);
+  String _preferenceKey(String recordKey) => '$storagePrefix$recordKey';
 
   @override
-  Future<void> write(String value) async {
-    await (await _instance).setString(storageKey, value);
+  Future<Map<String, String>> readAll() async {
+    final keys = (await _preferences.getKeys())
+        .where((key) => key.startsWith(storagePrefix))
+        .toSet();
+    if (keys.isEmpty) return const {};
+    final values = await _preferences.getAll(allowList: keys);
+    final invalidKeys = values.entries
+        .where((entry) => entry.value is! String)
+        .map((entry) => entry.key)
+        .toSet();
+    if (invalidKeys.isNotEmpty) {
+      await _preferences.clear(allowList: invalidKeys);
+    }
+    return {
+      for (final entry in values.entries)
+        if (entry.key.startsWith(storagePrefix) && entry.value is String)
+          entry.key.substring(storagePrefix.length): entry.value! as String,
+    };
   }
+
+  @override
+  Future<void> write(String key, String value) =>
+      _preferences.setString(_preferenceKey(key), value);
+
+  @override
+  Future<void> remove(String key) => _preferences.remove(_preferenceKey(key));
 
   @override
   Future<void> clear() async {
-    await (await _instance).remove(storageKey);
+    final keys = (await _preferences.getKeys())
+        .where((key) => key.startsWith(storagePrefix))
+        .toSet();
+    if (keys.isNotEmpty) await _preferences.clear(allowList: keys);
   }
+}
+
+class _SharedPreferencesAsyncAdapter implements EschoolAsyncPreferences {
+  SharedPreferencesAsync get _preferences => SharedPreferencesAsync();
+
+  @override
+  Future<void> clear({Set<String>? allowList}) =>
+      _preferences.clear(allowList: allowList);
+
+  @override
+  Future<Map<String, Object?>> getAll({Set<String>? allowList}) =>
+      _preferences.getAll(allowList: allowList);
+
+  @override
+  Future<Set<String>> getKeys({Set<String>? allowList}) =>
+      _preferences.getKeys(allowList: allowList);
+
+  @override
+  Future<void> remove(String key) => _preferences.remove(key);
+
+  @override
+  Future<void> setString(String key, String value) =>
+      _preferences.setString(key, value);
 }
 
 /// Memory-fronted, persistent cache for non-sensitive academic metadata.
@@ -130,13 +190,14 @@ class EschoolMetadataCache {
     // Verify that the codec output is JSON-compatible before changing memory.
     jsonEncode(encoded);
     _records[key.storageKey] = _CacheRecord(
+      schemaVersion: schemaVersion,
       key: key,
       protocolVersion: protocolVersion,
       savedAt: now,
       expiresAt: now.add(ttl),
       value: encoded,
     );
-    await _persistBestEffort();
+    await _persistRecordBestEffort(key.storageKey);
   }
 
   Future<T> getOrLoad<T extends Object>(
@@ -173,8 +234,8 @@ class EschoolMetadataCache {
     if (keys.isEmpty) return;
     for (final key in keys) {
       _records.remove(key);
+      await _removePersistedRecordBestEffort(key);
     }
-    await _persistBestEffort();
   }
 
   Future<void> clear() async {
@@ -204,58 +265,55 @@ class EschoolMetadataCache {
 
   Future<void> _load() async {
     try {
-      final raw = await _store.read();
-      if (raw == null) {
-        _loaded = true;
-        return;
-      }
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map ||
-          decoded['schemaVersion'] != schemaVersion ||
-          decoded['records'] is! Map) {
-        await _discardPersistedData();
-        return;
-      }
-      final records = Map<Object?, Object?>.from(decoded['records'] as Map);
+      final records = await _store.readAll();
+      final invalidKeys = <String>[];
       for (final entry in records.entries) {
-        if (entry.key is! String) continue;
-        final record = _CacheRecord.tryParse(entry.value);
-        if (record == null || record.protocolVersion != protocolVersion) {
+        final Object? decoded;
+        try {
+          decoded = jsonDecode(entry.value);
+        } on Object {
+          invalidKeys.add(entry.key);
           continue;
         }
-        _records[entry.key as String] = record;
+        final record = _CacheRecord.tryParse(decoded);
+        if (record == null ||
+            record.schemaVersion != schemaVersion ||
+            record.protocolVersion != protocolVersion ||
+            record.key.storageKey != entry.key) {
+          invalidKeys.add(entry.key);
+          continue;
+        }
+        _records[entry.key] = record;
       }
       _loaded = true;
-      // Rewrite after load to remove corrupt or obsolete individual records.
-      if (_records.length != records.length) await _persistBestEffort();
+      for (final key in invalidKeys) {
+        await _removePersistedRecordBestEffort(key);
+      }
     } on Object {
-      await _discardPersistedData();
-    }
-  }
-
-  Future<void> _discardPersistedData() async {
-    _records.clear();
-    _loaded = true;
-    try {
-      await _store.clear();
-    } on Object {
-      // Treat unreadable local metadata as an empty cache.
+      _records.clear();
+      _loaded = true;
+      // Treat an unavailable local metadata store as an empty cache.
     }
   }
 
   Future<void> _removeRecord(String storageKey) async {
-    if (_records.remove(storageKey) != null) await _persistBestEffort();
+    _records.remove(storageKey);
+    await _removePersistedRecordBestEffort(storageKey);
   }
 
-  Future<void> _persistBestEffort() async {
-    final payload = jsonEncode({
-      'schemaVersion': schemaVersion,
-      'records': {
-        for (final entry in _records.entries) entry.key: entry.value.toJson(),
-      },
-    });
+  Future<void> _persistRecordBestEffort(String storageKey) async {
+    final record = _records[storageKey];
+    if (record == null) return;
     try {
-      await _store.write(payload);
+      await _store.write(storageKey, jsonEncode(record.toJson()));
+    } on Object {
+      // Keep the in-memory cache usable when persistence is unavailable.
+    }
+  }
+
+  Future<void> _removePersistedRecordBestEffort(String storageKey) async {
+    try {
+      await _store.remove(storageKey);
     } on Object {
       // Keep the in-memory cache usable when persistence is unavailable.
     }
@@ -264,6 +322,7 @@ class EschoolMetadataCache {
 
 class _CacheRecord {
   const _CacheRecord({
+    required this.schemaVersion,
     required this.key,
     required this.protocolVersion,
     required this.savedAt,
@@ -271,6 +330,7 @@ class _CacheRecord {
     required this.value,
   });
 
+  final int schemaVersion;
   final EschoolCacheKey key;
   final String protocolVersion;
   final DateTime savedAt;
@@ -278,6 +338,7 @@ class _CacheRecord {
   final Object? value;
 
   Map<String, Object?> toJson() => {
+        'schemaVersion': schemaVersion,
         'kind': key.kind,
         'scope': key.scope,
         'protocolVersion': protocolVersion,
@@ -289,12 +350,14 @@ class _CacheRecord {
   static _CacheRecord? tryParse(Object? value) {
     if (value is! Map) return null;
     final map = Map<Object?, Object?>.from(value);
+    final schemaVersion = map['schemaVersion'];
     final kind = map['kind'];
     final scope = map['scope'];
     final protocolVersion = map['protocolVersion'];
     final savedAt = map['savedAt'];
     final expiresAt = map['expiresAt'];
-    if (kind is! String ||
+    if (schemaVersion is! int ||
+        kind is! String ||
         scope is! String ||
         protocolVersion is! String ||
         savedAt is! int ||
@@ -302,6 +365,7 @@ class _CacheRecord {
       return null;
     }
     return _CacheRecord(
+      schemaVersion: schemaVersion,
       key: EschoolCacheKey(kind, scope),
       protocolVersion: protocolVersion,
       savedAt: DateTime.fromMillisecondsSinceEpoch(savedAt),

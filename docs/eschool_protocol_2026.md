@@ -417,8 +417,10 @@ Recommended eCalculator policy:
 | diary/homework | 15–60 minutes plus manual refresh | date range changes, relevant event hint | deadline/completion data changes |
 | mark/dictionary metadata | persistent, 7 days | session/protocol/configuration change, manual refresh | official memory/local caching |
 
-eCalculator implements this as a memory-fronted, versioned SharedPreferences
-cache containing only typed display metadata. Cache keys include a hashed,
+eCalculator implements this as a memory-fronted, versioned
+`SharedPreferencesAsync` cache with one prefixed preference per typed metadata
+record. Independent records avoid whole-cache read-modify-write updates across
+foreground and future background isolates. Cache keys include a hashed,
 normalized account identity plus user, current position, organization, relevant
 year/group/period identifiers, and schema/protocol versions. Corrupt or
 version-mismatched entries are discarded. Logout, session identity changes,
