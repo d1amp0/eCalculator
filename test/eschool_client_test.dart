@@ -49,6 +49,69 @@ void main() {
       expect(requests, 1);
     });
 
+    test('fresh and restored sessions reuse the same metadata scope', () async {
+      final store = _MemoryMetadataStore();
+      var academicYearRequests = 0;
+
+      http.Response responseFor(http.Request request) {
+        if (request.url.path.endsWith('/login')) {
+          return http.Response(
+            '{}',
+            200,
+            headers: {'set-cookie': 'JSESSIONID=synthetic-session; Path=/'},
+          );
+        }
+        if (request.url.path.endsWith('/state')) {
+          return _jsonResponse({
+            'authenticated': true,
+            'userId': 42,
+            'user': {
+              'currentPosition': {'positionId': 9, 'orgnum': 6},
+            },
+          });
+        }
+        if (request.url.path.endsWith('/yearplan/academyears')) {
+          academicYearRequests++;
+          return _jsonResponse([
+            {
+              'yearId': 26,
+              'begDate': '2026-09-01',
+              'endDate': '2027-05-31',
+            },
+          ]);
+        }
+        return http.Response('{}', 404);
+      }
+
+      final fresh = EschoolClient.fromPassword(
+        username: ' Student ',
+        password: 'password',
+        httpClient: MockClient((request) async => responseFor(request)),
+        deviceIdentityStore: _CountingIdentityStore(),
+        cache: EschoolMetadataCache(store: store),
+      );
+      expect(
+        (await fresh.authenticate()).result,
+        AuthenticationResult.authenticated,
+      );
+      expect(await fresh.academicYears(), ['2026/2027']);
+
+      final restored = EschoolClient(
+        username: 'student',
+        credentialHash: null,
+        cookies: const {'JSESSIONID': 'synthetic-session'},
+        userId: 42,
+        positionId: '9',
+        organizationId: '6',
+        httpClient: MockClient((request) async => responseFor(request)),
+        deviceIdentityStore: _CountingIdentityStore(),
+        cache: EschoolMetadataCache(store: store),
+      );
+      expect(await restored.validateSession(), SessionValidation.valid);
+      expect(await restored.academicYears(), ['2026/2027']);
+      expect(academicYearRequests, 1);
+    });
+
     test('identity changes clear persistent metadata but not device identity',
         () async {
       final store = _MemoryMetadataStore();
@@ -331,8 +394,7 @@ void main() {
   });
 
   group('current grades protocol', () {
-    test('uses underscored path and parses live nested grade fields',
-        () async {
+    test('uses underscored path and parses live nested grade fields', () async {
       final paths = <String>[];
       final client = _restoredClient(
         MockClient((request) async {

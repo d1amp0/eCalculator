@@ -453,6 +453,22 @@ The live Windows trace contained three closely spaced
 plausible explanation. It is recorded as a later optimization rather than
 changing cache concurrency behavior as part of this narrow schema correction.
 
+A later Windows restart audit confirmed correct remembered-session behavior:
+`/state` was the first authentication request, used the restored session, and
+returned 200 without any `/login`. The same run nevertheless re-requested
+academic years, classes, periods, and subjects despite previously warmed TTLs.
+The cause is not inferred from that symptom. Fresh-login and restored-session
+tests produce and reuse the same account-isolated metadata scope for identical
+synthetic `/state` identity, so audit-only cache diagnostics now report safe
+hit/miss reasons, initialization accepted/rejected counts, invalidation/clear,
+and storage operation failures. They never include scopes, keys, preference
+values, identifiers, or exception messages.
+
+Homework is activated lazily at the main navigation layer. Constructing the
+initial Calculator tab no longer mounts `HomeworkPage` or calls
+`getPrsDiary`; the first Homework navigation mounts it once, and the existing
+`IndexedStack` then preserves its state across tab switches.
+
 ## 11. Notification/live-update architecture
 
 The official client defines:

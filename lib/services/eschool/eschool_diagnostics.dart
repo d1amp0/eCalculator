@@ -71,6 +71,30 @@ class EschoolDiagnostics {
     }
   }
 
+  /// Emits cache lifecycle metadata without accepting cache scopes, keys, or
+  /// persisted values. Cache kinds and reasons are restricted to known-safe
+  /// tokens before reaching the diagnostic sink.
+  void cacheEvent({
+    required String event,
+    String? kind,
+    String? reason,
+    int? discovered,
+    int? accepted,
+    int? rejected,
+    int? records,
+  }) {
+    if (!enabled) return;
+    _emit({
+      'event': _safeCacheEvent(event),
+      if (kind != null) 'kind': _safeCacheKind(kind),
+      if (reason != null) 'reason': _safeCacheReason(reason),
+      if (discovered != null) 'discovered': discovered,
+      if (accepted != null) 'accepted': accepted,
+      if (rejected != null) 'rejected': rejected,
+      if (records != null) 'records': records,
+    });
+  }
+
   void _emit(Map<String, Object?> metadata) {
     _sink('ESCOOL_PROTOCOL_AUDIT ${jsonEncode(metadata)}');
   }
@@ -184,5 +208,43 @@ String _safeName(String value) {
   return '[redacted-name]';
 }
 
+String _safeCacheEvent(String value) =>
+    _cacheEvents.contains(value) ? value : 'redacted';
+
+String _safeCacheKind(String value) =>
+    _cacheKinds.contains(value) ? value : 'redacted';
+
+String _safeCacheReason(String value) =>
+    _cacheReasons.contains(value) ? value : 'redacted';
+
 const _nestedListFields = {'part', 'variant', 'mark', 'file'};
 const _nestedMapFields = {'currentPosition', 'unit'};
+const _cacheEvents = {
+  'cache-hit',
+  'cache-miss',
+  'cache-init',
+  'cache-invalidated',
+  'cache-cleared',
+  'cache-storage-failure',
+};
+const _cacheKinds = {
+  'academic-years',
+  'classes',
+  'periods',
+  'subjects',
+  'mark-dictionaries',
+};
+const _cacheReasons = {
+  'not-found',
+  'expired',
+  'schema-mismatch',
+  'protocol-mismatch',
+  'key-mismatch',
+  'decode-failed',
+  'storage-read-failed',
+  'storage-write-failed',
+  'storage-remove-failed',
+  'storage-clear-failed',
+  'explicitly-invalidated',
+  'cleared',
+};

@@ -32,7 +32,10 @@ class EschoolClient {
         _deviceIdentityStore =
             deviceIdentityStore ?? SecureEschoolDeviceIdentityStore(),
         _deviceMetadata = deviceMetadata ?? EschoolDeviceMetadata.current(),
-        _cache = cache ?? EschoolMetadataCache(),
+        _cache = cache ??
+            EschoolMetadataCache(
+              diagnostics: diagnostics ?? EschoolDiagnostics.fromEnvironment(),
+            ),
         _sessionUse =
             (cookies?.isNotEmpty ?? false) ? _restoredSession : _freshLogin,
         sessionState = (cookies?.isNotEmpty ?? false)

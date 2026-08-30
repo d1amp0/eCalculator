@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:ecalculator/services/eschool/eschool_diagnostics.dart';
 import 'package:ecalculator/services/eschool/eschool_protocol.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -80,17 +81,11 @@ class SharedPreferencesEschoolMetadataStore implements EschoolMetadataStore {
         .toSet();
     if (keys.isEmpty) return const {};
     final values = await _preferences.getAll(allowList: keys);
-    final invalidKeys = values.entries
-        .where((entry) => entry.value is! String)
-        .map((entry) => entry.key)
-        .toSet();
-    if (invalidKeys.isNotEmpty) {
-      await _preferences.clear(allowList: invalidKeys);
-    }
     return {
       for (final entry in values.entries)
-        if (entry.key.startsWith(storagePrefix) && entry.value is String)
-          entry.key.substring(storagePrefix.length): entry.value! as String,
+        if (entry.key.startsWith(storagePrefix))
+          entry.key.substring(storagePrefix.length):
+              entry.value is String ? entry.value! as String : '',
     };
   }
 
@@ -142,38 +137,69 @@ class EschoolMetadataCache {
   EschoolMetadataCache({
     EschoolClock? clock,
     EschoolMetadataStore? store,
+    EschoolDiagnostics? diagnostics,
     this.schemaVersion = currentSchemaVersion,
     this.protocolVersion = EschoolProtocol.clientVersion,
   })  : _clock = clock ?? DateTime.now,
-        _store = store ?? SharedPreferencesEschoolMetadataStore();
+        _store = store ?? SharedPreferencesEschoolMetadataStore(),
+        _diagnostics = diagnostics ?? EschoolDiagnostics.fromEnvironment();
 
   static const currentSchemaVersion = 2;
 
   final EschoolClock _clock;
   final EschoolMetadataStore _store;
+  final EschoolDiagnostics _diagnostics;
   final int schemaVersion;
   final String protocolVersion;
   final Map<String, _CacheRecord> _records = {};
+  final Map<String, String> _rejectedReasons = {};
   bool _loaded = false;
   Future<void>? _loadFuture;
+  String? _storageReadFailure;
 
   Future<T?> get<T extends Object>(
     EschoolCacheKey key,
     EschoolCacheCodec<T> codec,
   ) async {
     await _ensureLoaded();
-    final record = _records[key.storageKey];
-    if (record == null) return null;
-    if (record.key != key ||
-        record.protocolVersion != protocolVersion ||
-        !_clock().isBefore(record.expiresAt)) {
-      await _removeRecord(key.storageKey);
+    final storageKey = key.storageKey;
+    final record = _records[storageKey];
+    if (record == null) {
+      _cacheMiss(
+        key,
+        _rejectedReasons.remove(storageKey) ??
+            _storageReadFailure ??
+            'not-found',
+      );
+      return null;
+    }
+    if (record.key != key) {
+      _cacheMiss(key, 'key-mismatch');
+      await _removeRecord(storageKey, kind: key.kind);
+      return null;
+    }
+    if (record.schemaVersion != schemaVersion) {
+      _cacheMiss(key, 'schema-mismatch');
+      await _removeRecord(storageKey, kind: key.kind);
+      return null;
+    }
+    if (record.protocolVersion != protocolVersion) {
+      _cacheMiss(key, 'protocol-mismatch');
+      await _removeRecord(storageKey, kind: key.kind);
+      return null;
+    }
+    if (!_clock().isBefore(record.expiresAt)) {
+      _cacheMiss(key, 'expired');
+      await _removeRecord(storageKey, kind: key.kind);
       return null;
     }
     try {
-      return codec.decode(record.value);
+      final decoded = codec.decode(record.value);
+      _diagnostics.cacheEvent(event: 'cache-hit', kind: key.kind);
+      return decoded;
     } on Object {
-      await _removeRecord(key.storageKey);
+      _cacheMiss(key, 'decode-failed');
+      await _removeRecord(storageKey, kind: key.kind);
       return null;
     }
   }
@@ -220,7 +246,12 @@ class EschoolMetadataCache {
 
   Future<void> invalidate(EschoolCacheKey key) async {
     await _ensureLoaded();
-    await _removeRecord(key.storageKey);
+    _diagnostics.cacheEvent(
+      event: 'cache-invalidated',
+      kind: key.kind,
+      reason: 'explicitly-invalidated',
+    );
+    await _removeRecord(key.storageKey, kind: key.kind);
   }
 
   Future<void> invalidateWhere(
@@ -233,8 +264,15 @@ class EschoolMetadataCache {
         .toList(growable: false);
     if (keys.isEmpty) return;
     for (final key in keys) {
-      _records.remove(key);
-      await _removePersistedRecordBestEffort(key);
+      final record = _records.remove(key);
+      if (record != null) {
+        _diagnostics.cacheEvent(
+          event: 'cache-invalidated',
+          kind: record.key.kind,
+          reason: 'explicitly-invalidated',
+        );
+      }
+      await _removePersistedRecordBestEffort(key, kind: record?.key.kind);
     }
   }
 
@@ -247,12 +285,24 @@ class EschoolMetadataCache {
         // Clearing must still proceed if the initial read failed.
       }
     }
+    final recordCount = _records.length;
     _records.clear();
+    _rejectedReasons.clear();
+    _storageReadFailure = null;
     _loaded = true;
     _loadFuture = null;
+    _diagnostics.cacheEvent(
+      event: 'cache-cleared',
+      reason: 'cleared',
+      records: recordCount,
+    );
     try {
       await _store.clear();
     } on Object {
+      _diagnostics.cacheEvent(
+        event: 'cache-storage-failure',
+        reason: 'storage-clear-failed',
+      );
       // An unavailable metadata store must not affect logout/session safety.
     }
   }
@@ -267,38 +317,72 @@ class EschoolMetadataCache {
     try {
       final records = await _store.readAll();
       final invalidKeys = <String>[];
+      var accepted = 0;
       for (final entry in records.entries) {
         final Object? decoded;
         try {
           decoded = jsonDecode(entry.value);
         } on Object {
           invalidKeys.add(entry.key);
+          _rejectedReasons[entry.key] = 'decode-failed';
           continue;
         }
         final record = _CacheRecord.tryParse(decoded);
-        if (record == null ||
-            record.schemaVersion != schemaVersion ||
-            record.protocolVersion != protocolVersion ||
-            record.key.storageKey != entry.key) {
+        final rejectionReason = record == null
+            ? 'decode-failed'
+            : record.schemaVersion != schemaVersion
+                ? 'schema-mismatch'
+                : record.protocolVersion != protocolVersion
+                    ? 'protocol-mismatch'
+                    : record.key.storageKey != entry.key
+                        ? 'key-mismatch'
+                        : null;
+        if (rejectionReason != null) {
           invalidKeys.add(entry.key);
+          _rejectedReasons[entry.key] = rejectionReason;
           continue;
         }
-        _records[entry.key] = record;
+        _records[entry.key] = record!;
+        accepted++;
       }
       _loaded = true;
+      _diagnostics.cacheEvent(
+        event: 'cache-init',
+        discovered: records.length,
+        accepted: accepted,
+        rejected: records.length - accepted,
+      );
       for (final key in invalidKeys) {
         await _removePersistedRecordBestEffort(key);
       }
     } on Object {
       _records.clear();
+      _rejectedReasons.clear();
+      _storageReadFailure = 'storage-read-failed';
       _loaded = true;
+      _diagnostics.cacheEvent(
+        event: 'cache-init',
+        reason: 'storage-read-failed',
+      );
+      _diagnostics.cacheEvent(
+        event: 'cache-storage-failure',
+        reason: 'storage-read-failed',
+      );
       // Treat an unavailable local metadata store as an empty cache.
     }
   }
 
-  Future<void> _removeRecord(String storageKey) async {
+  void _cacheMiss(EschoolCacheKey key, String reason) {
+    _diagnostics.cacheEvent(
+      event: 'cache-miss',
+      kind: key.kind,
+      reason: reason,
+    );
+  }
+
+  Future<void> _removeRecord(String storageKey, {String? kind}) async {
     _records.remove(storageKey);
-    await _removePersistedRecordBestEffort(storageKey);
+    await _removePersistedRecordBestEffort(storageKey, kind: kind);
   }
 
   Future<void> _persistRecordBestEffort(String storageKey) async {
@@ -307,14 +391,27 @@ class EschoolMetadataCache {
     try {
       await _store.write(storageKey, jsonEncode(record.toJson()));
     } on Object {
+      _diagnostics.cacheEvent(
+        event: 'cache-storage-failure',
+        kind: record.key.kind,
+        reason: 'storage-write-failed',
+      );
       // Keep the in-memory cache usable when persistence is unavailable.
     }
   }
 
-  Future<void> _removePersistedRecordBestEffort(String storageKey) async {
+  Future<void> _removePersistedRecordBestEffort(
+    String storageKey, {
+    String? kind,
+  }) async {
     try {
       await _store.remove(storageKey);
     } on Object {
+      _diagnostics.cacheEvent(
+        event: 'cache-storage-failure',
+        kind: kind,
+        reason: 'storage-remove-failed',
+      );
       // Keep the in-memory cache usable when persistence is unavailable.
     }
   }

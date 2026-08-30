@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:ecalculator/components/more_menu.dart';
 import 'package:ecalculator/components/popover_button.dart';
 import 'package:ecalculator/other/themes.dart';
+import 'package:ecalculator/models/homework_item.dart';
+import 'package:ecalculator/pages/homework_page.dart';
 import 'package:ecalculator/pages/main_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -72,6 +74,46 @@ void main() {
       expect(find.byIcon(Icons.tune_outlined), findsOneWidget);
       expect(tester.takeException(), isNull);
     }
+  });
+
+  testWidgets('homework activates lazily once and keeps its state',
+      (tester) async {
+    var remoteLoads = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: lightMode,
+        home: MainPage(
+          pages: [
+            const Center(child: Text('Calculator page')),
+            HomeworkPage(
+              localItemsLoader: () async => <HomeworkItem>[],
+              remoteItemsLoader: () async {
+                remoteLoads++;
+                return <HomeworkItem>[];
+              },
+            ),
+            const Center(child: Text('Settings page')),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Calculator page'), findsOneWidget);
+    expect(find.byType(HomeworkPage), findsNothing);
+    expect(remoteLoads, 0);
+
+    await tester.tap(find.text('Задания'));
+    await tester.pumpAndSettle();
+    expect(find.byType(HomeworkPage), findsOneWidget);
+    expect(remoteLoads, 1);
+
+    await tester.tap(find.text('Настройки'));
+    await tester.pumpAndSettle();
+    expect(find.text('Settings page'), findsOneWidget);
+    await tester.tap(find.text('Задания'));
+    await tester.pumpAndSettle();
+    expect(remoteLoads, 1);
   });
 
   testWidgets('entire year and period selector surfaces are tappable',

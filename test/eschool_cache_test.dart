@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:ecalculator/services/eschool/eschool_cache.dart';
+import 'package:ecalculator/services/eschool/eschool_diagnostics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -298,6 +300,169 @@ void main() {
       expect(await cache.get(_accountA, _stringCodec), isNull);
       expect(store.values, isEmpty);
     });
+
+    test('audit reports safe initialization, miss, and hit metadata', () async {
+      final events = <String>[];
+      final diagnostics = EschoolDiagnostics(enabled: true, sink: events.add);
+      final store = _MemoryMetadataStore();
+      final first = EschoolMetadataCache(
+        store: store,
+        diagnostics: diagnostics,
+      );
+
+      expect(await first.get(_accountA, _stringCodec), isNull);
+      await first.put(
+        _accountA,
+        'private-cache-value',
+        const Duration(days: 30),
+        _stringCodec,
+      );
+      final afterRestart = EschoolMetadataCache(
+        store: store,
+        diagnostics: diagnostics,
+      );
+      expect(await afterRestart.get(_accountA, _stringCodec),
+          'private-cache-value');
+
+      final metadata = events.map(_decodeAuditEvent).toList();
+      expect(
+        metadata,
+        contains(
+          containsPair('event', 'cache-miss'),
+        ),
+      );
+      expect(
+        metadata,
+        contains(
+          allOf(
+            containsPair('event', 'cache-hit'),
+            containsPair('kind', 'subjects'),
+          ),
+        ),
+      );
+      expect(
+        metadata,
+        contains(
+          allOf(
+            containsPair('event', 'cache-init'),
+            containsPair('discovered', 1),
+            containsPair('accepted', 1),
+            containsPair('rejected', 0),
+          ),
+        ),
+      );
+      expect(events.join(), isNot(contains(_accountA.scope)));
+      expect(events.join(), isNot(contains('private-cache-value')));
+    });
+
+    test('audit classifies rejected persisted records without values',
+        () async {
+      final store = _MemoryMetadataStore();
+      await EschoolMetadataCache(store: store).put(
+        _accountA,
+        'accepted-value',
+        const Duration(days: 30),
+        _stringCodec,
+      );
+      store.values[_accountB.storageKey] = 'private malformed value';
+      final events = <String>[];
+      final cache = EschoolMetadataCache(
+        store: store,
+        diagnostics: EschoolDiagnostics(enabled: true, sink: events.add),
+      );
+
+      expect(await cache.get(_accountA, _stringCodec), 'accepted-value');
+      expect(await cache.get(_accountB, _stringCodec), isNull);
+
+      final metadata = events.map(_decodeAuditEvent).toList();
+      expect(
+        metadata,
+        contains(
+          allOf(
+            containsPair('event', 'cache-init'),
+            containsPair('discovered', 2),
+            containsPair('accepted', 1),
+            containsPair('rejected', 1),
+          ),
+        ),
+      );
+      expect(
+        metadata,
+        contains(
+          allOf(
+            containsPair('event', 'cache-miss'),
+            containsPair('reason', 'decode-failed'),
+          ),
+        ),
+      );
+      expect(events.join(), isNot(contains('private malformed value')));
+    });
+
+    test('audit exposes best-effort storage failure categories only', () async {
+      final store = _FailingMetadataStore();
+      final events = <String>[];
+      EschoolMetadataCache cache() => EschoolMetadataCache(
+            store: store,
+            diagnostics: EschoolDiagnostics(enabled: true, sink: events.add),
+          );
+
+      store.failRead = true;
+      expect(await cache().get(_accountA, _stringCodec), isNull);
+      store.failRead = false;
+
+      store.failWrite = true;
+      await cache().put(
+        _accountA,
+        'private-write-value',
+        const Duration(days: 30),
+        _stringCodec,
+      );
+      store.failWrite = false;
+
+      final removalCache = cache();
+      await removalCache.put(
+        _accountA,
+        'value-to-remove',
+        const Duration(days: 30),
+        _stringCodec,
+      );
+      store.failRemove = true;
+      await removalCache.invalidate(_accountA);
+      store.failRemove = false;
+
+      store.failClear = true;
+      await cache().clear();
+
+      final reasons = events
+          .map(_decodeAuditEvent)
+          .map((event) => event['reason'])
+          .whereType<String>()
+          .toSet();
+      expect(
+        reasons,
+        containsAll({
+          'storage-read-failed',
+          'storage-write-failed',
+          'storage-remove-failed',
+          'storage-clear-failed',
+        }),
+      );
+      expect(events.join(), isNot(contains('private storage exception')));
+      expect(events.join(), isNot(contains('private-write-value')));
+      expect(events.join(), isNot(contains(_accountA.scope)));
+    });
+
+    test('storage failures emit nothing when audit mode is disabled', () async {
+      final events = <String>[];
+      final store = _FailingMetadataStore()..failRead = true;
+      final cache = EschoolMetadataCache(
+        store: store,
+        diagnostics: EschoolDiagnostics(enabled: false, sink: events.add),
+      );
+
+      expect(await cache.get(_accountA, _stringCodec), isNull);
+      expect(events, isEmpty);
+    });
   });
 
   test('metadata TTL policies match stability boundaries', () {
@@ -319,6 +484,10 @@ final _stringCodec = EschoolCacheCodec<String>(
     return value;
   },
 );
+
+Map<String, dynamic> _decodeAuditEvent(String message) =>
+    jsonDecode(message.substring('ESCOOL_PROTOCOL_AUDIT '.length))
+        as Map<String, dynamic>;
 
 class _MemoryMetadataStore implements EschoolMetadataStore {
   _MemoryMetadataStore([Map<String, String>? initialValues])
@@ -350,6 +519,39 @@ class _DelayedReadMetadataStore extends _MemoryMetadataStore {
   Future<Map<String, String>> readAll() async {
     await _readGate.future;
     return super.readAll();
+  }
+}
+
+class _FailingMetadataStore extends _MemoryMetadataStore {
+  bool failRead = false;
+  bool failWrite = false;
+  bool failRemove = false;
+  bool failClear = false;
+
+  Never _fail() => throw StateError('private storage exception');
+
+  @override
+  Future<Map<String, String>> readAll() async {
+    if (failRead) _fail();
+    return super.readAll();
+  }
+
+  @override
+  Future<void> write(String key, String value) async {
+    if (failWrite) _fail();
+    await super.write(key, value);
+  }
+
+  @override
+  Future<void> remove(String key) async {
+    if (failRemove) _fail();
+    await super.remove(key);
+  }
+
+  @override
+  Future<void> clear() async {
+    if (failClear) _fail();
+    await super.clear();
   }
 }
 
