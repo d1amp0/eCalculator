@@ -376,8 +376,9 @@ class EschoolGradeMark {
   }
 }
 
-/// Provisional protocol identity only. It must not be used for notification
-/// diffing until a sanitized non-empty response confirms markNum/instance IDs.
+/// Provisional protocol identity only. `markNum` is live-confirmed, but this
+/// must not be used for notification diffing until the exact semantics and
+/// stability of `markId` and `markValId` are verified.
 class EschoolGradeIdentity {
   const EschoolGradeIdentity({
     required this.lessonId,
