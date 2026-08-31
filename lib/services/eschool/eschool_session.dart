@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ecalculator/services/eschool/eschool_client.dart';
+import 'package:ecalculator/services/eschool/eschool_models.dart';
 import 'package:ecalculator/storage/auth_storage.dart';
 import 'package:ecalculator/storage/settings_storage.dart';
 
@@ -11,6 +12,7 @@ enum LoginResult {
   unavailable,
   forbidden,
   rateLimited,
+  mfaRequired,
   storageFailure,
 }
 
@@ -21,9 +23,10 @@ typedef EschoolClientFactory = EschoolClient Function({
 
 typedef RestoredEschoolClientFactory = EschoolClient Function({
   required String username,
-  required String? credentialHash,
   required Map<String, String> cookies,
   required int? userId,
+  required String? positionId,
+  required String? organizationId,
 });
 
 class EschoolSession {
@@ -44,8 +47,12 @@ class EschoolSession {
 
   EschoolClient? _client;
   bool _remembered = false;
+  EschoolSessionState _state = EschoolSessionState.unknown;
+  EschoolMfaChallenge? _mfaChallenge;
 
   bool get isAuthenticated => _client != null;
+  EschoolSessionState get state => _state;
+  EschoolMfaChallenge? get mfaChallenge => _mfaChallenge;
 
   EschoolClient get client {
     final value = _client;
@@ -60,27 +67,30 @@ class EschoolSession {
     try {
       encoded = await _authStorage.readSession();
     } on Object {
+      _state = EschoolSessionState.unavailable;
       return false;
     }
-    if (encoded == null) return false;
+    if (encoded == null) {
+      _state = EschoolSessionState.expired;
+      return false;
+    }
 
     try {
       final saved = json.decode(encoded) as Map<String, dynamic>;
       final candidate = _restoredClientFactory(
         username: saved['username'] as String,
-        credentialHash: saved['credentialHash'] as String?,
         cookies: Map<String, String>.from(saved['cookies'] as Map),
         userId: saved['userId'] as int?,
+        positionId: saved['positionId']?.toString(),
+        organizationId: saved['organizationId']?.toString(),
       );
       final validation = await candidate.validateSession();
-      if (validation == SessionValidation.unavailable) return false;
-      if (validation == SessionValidation.unauthorized) {
-        final authentication = await candidate.authenticate();
-        if (authentication == AuthenticationResult.invalidCredentials) {
+      _state = candidate.sessionState;
+      if (validation != SessionValidation.valid) {
+        if (validation == SessionValidation.expired) {
           await _clearStoredSessionBestEffort();
-          return false;
         }
-        if (authentication != AuthenticationResult.authenticated) return false;
+        return false;
       }
 
       _remembered = true;
@@ -95,12 +105,15 @@ class EschoolSession {
       }
       return true;
     } on FormatException {
+      _state = EschoolSessionState.expired;
       await _clearStoredSessionBestEffort();
       return false;
     } on TypeError {
+      _state = EschoolSessionState.expired;
       await _clearStoredSessionBestEffort();
       return false;
     } on Object {
+      _state = EschoolSessionState.unavailable;
       return false;
     }
   }
@@ -111,13 +124,16 @@ class EschoolSession {
     required bool rememberMe,
   }) async {
     final candidate = _clientFactory(username: username, password: password);
-    final AuthenticationResult authentication;
+    final AuthenticationOutcome outcome;
     try {
-      authentication = await candidate.authenticate();
+      outcome = await candidate.authenticate();
     } on Object {
+      _state = EschoolSessionState.unavailable;
       return LoginResult.unavailable;
     }
-    switch (authentication) {
+    _state = candidate.sessionState;
+    _mfaChallenge = outcome.mfaChallenge;
+    switch (outcome.result) {
       case AuthenticationResult.invalidCredentials:
         return LoginResult.invalidCredentials;
       case AuthenticationResult.unavailable:
@@ -126,6 +142,10 @@ class EschoolSession {
         return LoginResult.forbidden;
       case AuthenticationResult.rateLimited:
         return LoginResult.rateLimited;
+      case AuthenticationResult.mfaRequired:
+        return LoginResult.mfaRequired;
+      case AuthenticationResult.storageFailure:
+        return LoginResult.storageFailure;
       case AuthenticationResult.authenticated:
         break;
     }
@@ -166,7 +186,9 @@ class EschoolSession {
     final oldClient = _client;
     _client = null;
     _remembered = false;
-    oldClient?.clearSession();
+    _state = EschoolSessionState.expired;
+    _mfaChallenge = null;
+    await oldClient?.clearSession();
   }
 
   Future<void> _persistCurrentSession() async {
@@ -177,15 +199,18 @@ class EschoolSession {
   void _activate(EschoolClient candidate, {required bool remembered}) {
     _client = candidate;
     _remembered = remembered;
+    _state = EschoolSessionState.valid;
+    _mfaChallenge = null;
     candidate.onSessionChanged = _persistCurrentSession;
   }
 
   String _encodeSession(EschoolClient current) {
     return json.encode({
       'username': current.username,
-      'credentialHash': current.credentialHash,
       'cookies': current.cookies,
       'userId': current.userId,
+      'positionId': current.positionId,
+      'organizationId': current.organizationId,
     });
   }
 
@@ -208,15 +233,18 @@ class EschoolSession {
 
 EschoolClient _createRestoredClient({
   required String username,
-  required String? credentialHash,
   required Map<String, String> cookies,
   required int? userId,
+  required String? positionId,
+  required String? organizationId,
 }) {
   return EschoolClient(
     username: username,
-    credentialHash: credentialHash,
+    credentialHash: null,
     cookies: cookies,
     userId: userId,
+    positionId: positionId,
+    organizationId: organizationId,
   );
 }
 

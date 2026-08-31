@@ -4,6 +4,13 @@
 *.pyc
 *.swp
 .DS_Store
+.env
+.env.*
+!.env.example
+*.har
+*.dump
+*.bak
+*.backup
 .atom/
 .build/
 .swiftpm/
@@ -52,3 +59,10 @@ android/local.properties
 android/key.properties
 *.jks
 *.keystore
+*.apk
+*.aab
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+coverage/

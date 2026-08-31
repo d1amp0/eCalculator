@@ -106,6 +106,13 @@ class _LoginPageState extends State<LoginPage> {
               message: 'Слишком много запросов к eSchool. Попробуйте позже.',
             );
             return;
+          case LoginResult.mfaRequired:
+            showErrorLogin(
+              context,
+              message: 'eSchool запросил дополнительное подтверждение входа. '
+                  'Поддержка EMAIL/TOTP будет добавлена отдельно.',
+            );
+            return;
           case LoginResult.unavailable:
             showErrorLogin(
               context,
@@ -116,8 +123,8 @@ class _LoginPageState extends State<LoginPage> {
           case LoginResult.storageFailure:
             showErrorLogin(
               context,
-              message: 'Не удалось безопасно обновить данные входа. '
-                  'Попробуйте ещё раз.',
+              message: 'Не удалось получить доступ к безопасному хранилищу. '
+                  'Проверьте системные разрешения и попробуйте ещё раз.',
             );
             return;
         }

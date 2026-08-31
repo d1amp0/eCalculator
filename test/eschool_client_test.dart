@@ -1,170 +1,811 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:ecalculator/services/eschool/eschool_cache.dart';
 import 'package:ecalculator/services/eschool/eschool_client.dart';
+import 'package:ecalculator/services/eschool/eschool_device_identity.dart';
+import 'package:ecalculator/services/eschool/eschool_diagnostics.dart';
+import 'package:ecalculator/services/eschool/eschool_models.dart';
+import 'package:ecalculator/services/eschool/eschool_protocol.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
-  test('classifies an explicit login timeout as unavailable without retry',
-      () async {
-    var requests = 0;
-    final client = EschoolClient.fromPassword(
-      username: 'student',
-      password: 'password',
-      requestTimeout: const Duration(milliseconds: 1),
-      httpClient: MockClient((request) {
-        requests++;
-        return Completer<http.Response>().future;
-      }),
-    );
+  late Object gradesFixture;
 
-    expect(await client.authenticate(), AuthenticationResult.unavailable);
-    expect(requests, 1);
+  setUpAll(() async {
+    gradesFixture = jsonDecode(
+      await File('test/fixtures/eschool/grades_nested.json').readAsString(),
+    );
   });
 
-  test('applies the explicit timeout to authenticated GET requests', () async {
-    var requests = 0;
-    final client = EschoolClient(
-      username: 'student',
-      credentialHash: 'derived-credential',
-      userId: 42,
-      requestTimeout: const Duration(milliseconds: 1),
-      httpClient: MockClient((request) {
-        requests++;
-        return Completer<http.Response>().future;
-      }),
-    );
+  group('session semantics', () {
+    test('validates a restored session without login', () async {
+      var requests = 0;
+      final client = _restoredClient(
+        MockClient((request) async {
+          requests++;
+          expect(request.url.path, endsWith('/state'));
+          return http.Response(
+            jsonEncode({
+              'authenticated': true,
+              'userId': 42,
+              'user': {
+                'currentPosition': {'positionId': 9, 'orgnum': 6},
+              },
+            }),
+            200,
+          );
+        }),
+      );
 
-    await expectLater(
-      client.get('getDiaryUnits'),
-      throwsA(isA<TimeoutException>()),
-    );
-    expect(requests, 1);
-  });
+      expect(await client.validateSession(), SessionValidation.valid);
+      expect(client.sessionState, EschoolSessionState.valid);
+      expect(client.userId, 42);
+      expect(client.positionId, '9');
+      expect(client.organizationId, '6');
+      expect(requests, 1);
+    });
 
-  test('applies the explicit timeout to PUT requests without retry', () async {
-    var requests = 0;
-    final client = EschoolClient(
-      username: 'student',
-      credentialHash: 'derived-credential',
-      userId: 42,
-      requestTimeout: const Duration(milliseconds: 1),
-      httpClient: MockClient((request) {
-        requests++;
-        return Completer<http.Response>().future;
-      }),
-    );
+    test('fresh and restored sessions reuse the same metadata scope', () async {
+      final store = _MemoryMetadataStore();
+      var academicYearRequests = 0;
 
-    await expectLater(
-      client.put('send', const {}),
-      throwsA(isA<TimeoutException>()),
-    );
-    expect(requests, 1);
-  });
-
-  test('classifies a restored-session validation timeout as unavailable',
-      () async {
-    var requests = 0;
-    final client = EschoolClient(
-      username: 'student',
-      credentialHash: 'derived-credential',
-      cookies: const {'JSESSIONID': 'saved-session'},
-      requestTimeout: const Duration(milliseconds: 1),
-      httpClient: MockClient((request) {
-        requests++;
-        return Completer<http.Response>().future;
-      }),
-    );
-
-    expect(await client.validateSession(), SessionValidation.unavailable);
-    expect(requests, 1);
-  });
-
-  test('validates a restored session without logging in again', () async {
-    var loginRequests = 0;
-    final client = EschoolClient(
-      username: 'student',
-      credentialHash: 'derived-credential',
-      cookies: const {'JSESSIONID': 'saved-session'},
-      httpClient: MockClient((request) async {
-        if (request.url.path.endsWith('/login')) loginRequests++;
-        expect(request.headers['Cookie'], contains('JSESSIONID=saved-session'));
-        return http.Response(json.encode({'userId': 42}), 200);
-      }),
-    );
-
-    expect(await client.validateSession(), SessionValidation.valid);
-    expect(client.userId, 42);
-    expect(loginRequests, 0);
-  });
-
-  test('reauthenticates once after a 401 and retries the request', () async {
-    var protectedRequests = 0;
-    var loginRequests = 0;
-    final client = EschoolClient(
-      username: 'student',
-      credentialHash: 'derived-credential',
-      userId: 42,
-      cookies: const {'JSESSIONID': 'expired-session'},
-      httpClient: MockClient((request) async {
+      http.Response responseFor(http.Request request) {
         if (request.url.path.endsWith('/login')) {
-          loginRequests++;
           return http.Response(
             '{}',
             200,
-            headers: {'set-cookie': 'JSESSIONID=fresh-session; Path=/'},
+            headers: {'set-cookie': 'JSESSIONID=synthetic-session; Path=/'},
           );
         }
         if (request.url.path.endsWith('/state')) {
-          return http.Response(json.encode({'userId': 42}), 200);
+          return _jsonResponse({
+            'authenticated': true,
+            'userId': 42,
+            'user': {
+              'currentPosition': {'positionId': 9, 'orgnum': 6},
+            },
+          });
         }
-
-        protectedRequests++;
-        if (protectedRequests == 1) return http.Response('{}', 401);
-        expect(request.headers['Cookie'], contains('JSESSIONID=fresh-session'));
-        return http.Response(json.encode({'result': []}), 200);
-      }),
-    );
-
-    expect(await client.get('getDiaryUnits'), {'result': []});
-    expect(loginRequests, 1);
-    expect(protectedRequests, 2);
-  });
-
-  test('does not loop when a retried request is still unauthorized', () async {
-    var loginRequests = 0;
-    final client = EschoolClient(
-      username: 'student',
-      credentialHash: 'derived-credential',
-      userId: 42,
-      httpClient: MockClient((request) async {
-        if (request.url.path.endsWith('/login')) {
-          loginRequests++;
-          return http.Response(
-            '{}',
-            200,
-            headers: {'set-cookie': 'JSESSIONID=fresh-session; Path=/'},
-          );
+        if (request.url.path.endsWith('/yearplan/academyears')) {
+          academicYearRequests++;
+          return _jsonResponse([
+            {
+              'yearId': 26,
+              'begDate': '2026-09-01',
+              'endDate': '2027-05-31',
+            },
+          ]);
         }
-        if (request.url.path.endsWith('/state')) {
-          return http.Response(json.encode({'userId': 42}), 200);
-        }
-        return http.Response('{}', 401);
-      }),
-    );
+        return http.Response('{}', 404);
+      }
 
-    await expectLater(
-      client.get('getDiaryUnits'),
-      throwsA(
-        isA<EschoolRequestException>().having(
-          (error) => error.statusCode,
-          'statusCode',
-          401,
+      final fresh = EschoolClient.fromPassword(
+        username: ' Student ',
+        password: 'password',
+        httpClient: MockClient((request) async => responseFor(request)),
+        deviceIdentityStore: _CountingIdentityStore(),
+        cache: EschoolMetadataCache(store: store),
+      );
+      expect(
+        (await fresh.authenticate()).result,
+        AuthenticationResult.authenticated,
+      );
+      expect(await fresh.academicYears(), ['2026/2027']);
+
+      final restored = EschoolClient(
+        username: 'student',
+        credentialHash: null,
+        cookies: const {'JSESSIONID': 'synthetic-session'},
+        userId: 42,
+        positionId: '9',
+        organizationId: '6',
+        httpClient: MockClient((request) async => responseFor(request)),
+        deviceIdentityStore: _CountingIdentityStore(),
+        cache: EschoolMetadataCache(store: store),
+      );
+      expect(await restored.validateSession(), SessionValidation.valid);
+      expect(await restored.academicYears(), ['2026/2027']);
+      expect(academicYearRequests, 1);
+    });
+
+    test('identity changes clear persistent metadata but not device identity',
+        () async {
+      final store = _MemoryMetadataStore();
+      final cache = EschoolMetadataCache(store: store);
+      const key = EschoolCacheKey('subjects', 'old-session');
+      final codec = EschoolCacheCodec<String>(
+        encode: (value) => value,
+        decode: (value) => value! as String,
+      );
+      await cache.put(key, 'cached', const Duration(days: 1), codec);
+      final identityStore = _CountingIdentityStore();
+      final client = EschoolClient(
+        username: 'student',
+        credentialHash: null,
+        userId: 42,
+        positionId: 'position-1',
+        organizationId: 'organization-1',
+        cookies: const {'JSESSIONID': 'saved-session'},
+        httpClient: MockClient(
+          (_) async => _jsonResponse({
+            'authenticated': true,
+            'userId': 42,
+            'user': {
+              'currentPosition': {
+                'positionId': 'position-2',
+                'orgnum': 'organization-2',
+              },
+            },
+          }),
         ),
-      ),
-    );
-    expect(loginRequests, 1);
+        deviceIdentityStore: identityStore,
+        cache: cache,
+      );
+
+      expect(await client.validateSession(), SessionValidation.valid);
+      expect(store.values, isEmpty);
+      expect(identityStore.logins, isEmpty);
+    });
+
+    test('logout clears persistent metadata but not device identity', () async {
+      final store = _MemoryMetadataStore();
+      final cache = EschoolMetadataCache(store: store);
+      const key = EschoolCacheKey('subjects', 'current-session');
+      final codec = EschoolCacheCodec<String>(
+        encode: (value) => value,
+        decode: (value) => value! as String,
+      );
+      await cache.put(key, 'cached', const Duration(days: 1), codec);
+      final identityStore = _CountingIdentityStore();
+      final client = EschoolClient(
+        username: 'student',
+        credentialHash: null,
+        cookies: const {'JSESSIONID': 'saved-session'},
+        httpClient: MockClient((_) async => _jsonResponse({})),
+        deviceIdentityStore: identityStore,
+        cache: cache,
+      );
+
+      await client.clearSession();
+      expect(store.values, isEmpty);
+      expect(client.cookies, isEmpty);
+      expect(identityStore.logins, isEmpty);
+    });
+
+    for (final status in [401, 403, 429]) {
+      test('$status never logs in or retries', () async {
+        var requests = 0;
+        final client = _restoredClient(
+          MockClient((request) async {
+            requests++;
+            expect(request.url.path, isNot(endsWith('/login')));
+            return http.Response('{}', status);
+          }),
+        );
+
+        await expectLater(
+          client.getState(),
+          throwsA(
+            isA<EschoolRequestException>().having(
+              (error) => error.statusCode,
+              'statusCode',
+              status,
+            ),
+          ),
+        );
+        expect(requests, 1);
+        expect(
+          client.sessionState,
+          status == 401
+              ? EschoolSessionState.expired
+              : status == 403
+                  ? EschoolSessionState.forbidden
+                  : EschoolSessionState.rateLimited,
+        );
+      });
+    }
+
+    test('transient validation failure is unavailable without retry', () async {
+      var requests = 0;
+      final client = _restoredClient(
+        MockClient((request) async {
+          requests++;
+          return http.Response('{}', 503);
+        }),
+      );
+
+      expect(await client.validateSession(), SessionValidation.unavailable);
+      expect(client.sessionState, EschoolSessionState.unavailable);
+      expect(requests, 1);
+    });
+
+    test('request timeout is unavailable without retry', () async {
+      var requests = 0;
+      final client = _restoredClient(
+        MockClient((request) {
+          requests++;
+          return Completer<http.Response>().future;
+        }),
+        requestTimeout: const Duration(milliseconds: 1),
+      );
+
+      await expectLater(client.getState(), throwsA(isA<TimeoutException>()));
+      expect(client.sessionState, EschoolSessionState.unavailable);
+      expect(requests, 1);
+    });
   });
+
+  group('foreground login', () {
+    test('classifies device identity storage failure as local storage failure',
+        () async {
+      var requests = 0;
+      final events = <String>[];
+      final client = EschoolClient.fromPassword(
+        username: 'student',
+        password: 'password',
+        deviceIdentityStore: _FailingIdentityStore(),
+        diagnostics: EschoolDiagnostics(enabled: true, sink: events.add),
+        httpClient: MockClient((request) async {
+          requests++;
+          return http.Response('{}', 500);
+        }),
+      );
+
+      final outcome = await client.authenticate();
+      expect(outcome.result, AuthenticationResult.storageFailure);
+      expect(client.sessionState, EschoolSessionState.storageFailure);
+      expect(requests, 0);
+      expect(events, isEmpty);
+    });
+
+    test('uses SHA-256 and current persistent device shape', () async {
+      final identityStore = _CountingIdentityStore();
+      final devices = <Map<String, dynamic>>[];
+      final passwordFields = <String>[];
+      final client = EschoolClient.fromPassword(
+        username: ' Student ',
+        password: 'password',
+        deviceIdentityStore: identityStore,
+        deviceMetadata: const EschoolDeviceMetadata(
+          deviceName: 'Test browser',
+          deviceModel: '123',
+          cliOs: 'Test OS',
+          cliOsVer: '1',
+        ),
+        httpClient: MockClient((request) async {
+          if (request.url.path.endsWith('/login')) {
+            passwordFields.add(request.bodyFields['password']!);
+            devices.add(
+              jsonDecode(request.bodyFields['device']!) as Map<String, dynamic>,
+            );
+            return http.Response(
+              '{}',
+              200,
+              headers: {'set-cookie': 'JSESSIONID=session; Path=/'},
+            );
+          }
+          return http.Response(jsonEncode({'userId': 42}), 200);
+        }),
+      );
+
+      final outcome = await client.authenticate();
+      expect(outcome.result, AuthenticationResult.authenticated);
+      expect(
+        passwordFields.single,
+        EschoolClient.hashPassword('password'),
+      );
+      expect(devices.single, {
+        'cliType': 'web',
+        'cliVer': EschoolProtocol.clientVersion,
+        'pushToken': _CountingIdentityStore.pushToken,
+        'deviceId': _CountingIdentityStore.deviceId,
+        'deviceName': 'Test browser',
+        'deviceModel': '123',
+        'cliOs': 'Test OS',
+        'cliOsVer': '1',
+      });
+      expect(identityStore.logins, ['student']);
+    });
+
+    test('persistent store reuses install ID and per-account push token',
+        () async {
+      final values = _MemoryDeviceValueStore();
+      final firstStore = SecureEschoolDeviceIdentityStore(store: values);
+      final first = await firstStore.identityFor('student');
+      final second = await firstStore.identityFor('student');
+      final other = await firstStore.identityFor('other-student');
+      final afterRestart = await SecureEschoolDeviceIdentityStore(store: values)
+          .identityFor('student');
+
+      expect(first.deviceId, hasLength(32));
+      expect(first.pushToken, hasLength(64));
+      expect(second.deviceId, first.deviceId);
+      expect(second.pushToken, first.pushToken);
+      expect(other.deviceId, first.deviceId);
+      expect(other.pushToken, isNot(first.pushToken));
+      expect(afterRestart.deviceId, first.deviceId);
+      expect(afterRestart.pushToken, first.pushToken);
+    });
+
+    test('maps 409 MFA_REQUIRED defensively without exposing its token',
+        () async {
+      final events = <String>[];
+      final client = EschoolClient.fromPassword(
+        username: 'student',
+        password: 'password',
+        deviceIdentityStore: _CountingIdentityStore(),
+        diagnostics: EschoolDiagnostics(enabled: true, sink: events.add),
+        httpClient: MockClient((request) async {
+          return http.Response(
+            jsonEncode({
+              'code': 'MFA_REQUIRED',
+              'challengeToken': 'private-challenge-token',
+              'expiresAt': '2026-08-30T13:00:00Z',
+              'factors': [
+                {'factorId': 'email-1', 'type': 'EMAIL'},
+                {'factorId': 'totp-1', 'type': 'TOTP'},
+                {'unexpected': true},
+              ],
+              'unknown': {'ignored': true},
+            }),
+            409,
+          );
+        }),
+      );
+
+      final outcome = await client.authenticate();
+      expect(outcome.result, AuthenticationResult.mfaRequired);
+      expect(client.sessionState, EschoolSessionState.mfaRequired);
+      expect(outcome.mfaChallenge?.challengeToken, 'private-challenge-token');
+      expect(
+        outcome.mfaChallenge?.factors.map((factor) => factor.type),
+        ['EMAIL', 'TOTP'],
+      );
+      expect(events.join(), isNot(contains('private-challenge-token')));
+      expect(events.join(),
+          isNot(contains(EschoolClient.hashPassword('password'))));
+      expect(events.join(), isNot(contains(_CountingIdentityStore.deviceId)));
+      expect(events.join(), isNot(contains(_CountingIdentityStore.pushToken)));
+    });
+
+    test('does not claim CAPTCHA detection without a response contract',
+        () async {
+      final client = EschoolClient.fromPassword(
+        username: 'student',
+        password: 'password',
+        deviceIdentityStore: _CountingIdentityStore(),
+        httpClient: MockClient((request) async {
+          return http.Response(
+            jsonEncode({'code': 'CAPTCHA_REQUIRED'}),
+            409,
+          );
+        }),
+      );
+
+      final outcome = await client.authenticate();
+      expect(outcome.result, AuthenticationResult.unavailable);
+      expect(client.sessionState, EschoolSessionState.unavailable);
+      expect(EschoolProtocol.captchaResponseContractObserved, isFalse);
+    });
+  });
+
+  group('current grades protocol', () {
+    test('uses underscored path and parses live nested grade fields', () async {
+      final paths = <String>[];
+      final client = _restoredClient(
+        MockClient((request) async {
+          paths.add(request.url.path);
+          if (request.url.path.endsWith('/getDiaryUnits/')) {
+            expect(request.url.queryParameters, {'userId': '42', 'eiId': '7'});
+            return http.Response(
+              jsonEncode({
+                'result': [
+                  {
+                    'unitId': 10,
+                    'unitName': 'Алгебра',
+                    'markSysId': 1,
+                    'average': 4.5,
+                  },
+                ],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          expect(request.url.path, endsWith('/student/getDiaryPeriod_'));
+          expect(request.url.queryParameters, {'userId': '42', 'eiId': '7'});
+          return _jsonResponse(gradesFixture);
+        }),
+      );
+
+      final grades = await client.grades('7');
+      expect(paths, [
+        '/ec-server/student/getDiaryUnits/',
+        '/ec-server/student/getDiaryPeriod_',
+      ]);
+      expect(grades, hasLength(3));
+      expect(grades[0].subject.unitName, 'Алгебра');
+      expect(grades[0].part.weight, 2);
+      expect(grades[0].mark.value, '5');
+      expect(grades[0].mark.markNumber, 1);
+      expect(grades[0].mark.markId, 400);
+      expect(grades[0].mark.markValueId, 500);
+      expect(grades[0].mark.isUpdated, isTrue);
+      expect(grades[0].identity.provisionalKey, '100|200|-|1');
+      expect(grades[1].mark.criterionUseId, 'criterion-1');
+      expect(grades[1].mark.criterionLabel, 'Accuracy');
+      expect(grades[1].mark.markId, 401);
+      expect(grades[1].mark.markValueId, 501);
+      expect(grades[2].mark.markNumber, isNull);
+      expect(grades[2].mark.teacherName, isNull);
+    });
+
+    test('parses canonical lesPartId and retains production mark IDs', () {
+      final response = EschoolGradesResponse.fromJson({
+        'result': [
+          {
+            'lessonId': 1,
+            'unitId': 2,
+            'part': [
+              {
+                'lesPartId': 3,
+                'mark': [
+                  {
+                    'markId': 4,
+                    'markValId': 5,
+                    'markNum': 6,
+                    'markValue': '5',
+                    'isUpdated': 0,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+
+      final part = response.lessons.single.parts.single;
+      final mark = part.marks.single;
+      expect(part.partId, '3');
+      expect(mark.markId, 4);
+      expect(mark.markValueId, 5);
+      expect(mark.markNumber, 6);
+      expect(mark.isUpdated, isFalse);
+      expect(
+        EschoolGradeMark.tryParse({'markValue': '5', 'isUpdated': true})!
+            .isUpdated,
+        isTrue,
+      );
+    });
+
+    test('retains historical partId compatibility', () {
+      final part = EschoolGradePart.tryParse({
+        'partId': 3,
+        'mark': const [],
+      });
+
+      expect(part, isNotNull);
+      expect(part!.partId, '3');
+    });
+
+    test('ignores unknown fields and tolerates empty/missing parts', () {
+      final response = EschoolGradesResponse.fromJson({
+        'result': [
+          {'lessonId': 1, 'unitId': 2, 'part': [], 'newField': 'ignored'},
+          {'lessonId': 2, 'unitId': 2},
+          {'lessonId': 3},
+          'not-an-object',
+        ],
+      });
+
+      expect(response.lessons, hasLength(2));
+      expect(response.lessons.every((lesson) => lesson.parts.isEmpty), isTrue);
+    });
+
+    test('caches only subject projection while grades remain dynamic',
+        () async {
+      var unitRequests = 0;
+      var gradeRequests = 0;
+      final client = _restoredClient(
+        MockClient((request) async {
+          if (request.url.path.endsWith('/getDiaryUnits/')) {
+            unitRequests++;
+            return http.Response(
+              jsonEncode({
+                'result': [
+                  {'unitId': 10, 'unitName': 'Алгебра', 'average': 2},
+                ],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          gradeRequests++;
+          return _jsonResponse(gradesFixture);
+        }),
+      );
+
+      await client.grades('7');
+      await client.grades('7');
+      expect(unitRequests, 1);
+      expect(gradeRequests, 2);
+    });
+
+    test('unknown unitId invalidates and refetches the subject projection',
+        () async {
+      var unitRequests = 0;
+      var gradeRequests = 0;
+      final client = _restoredClient(
+        MockClient((request) async {
+          if (request.url.path.endsWith('/getDiaryUnits/')) {
+            unitRequests++;
+            return _jsonResponse({
+              'result': [
+                if (unitRequests == 1)
+                  {'unitId': 10, 'unitName': 'Алгебра'}
+                else
+                  {'unitId': 99, 'unitName': 'Физика'},
+              ],
+            });
+          }
+          gradeRequests++;
+          return _jsonResponse({
+            'result': [
+              {
+                'lessonId': 100,
+                'unitId': 99,
+                'part': [
+                  {
+                    'partId': 200,
+                    'mark': [
+                      {'markValue': '5'},
+                    ],
+                  },
+                ],
+              },
+            ],
+          });
+        }),
+      );
+
+      final grades = await client.grades('7');
+      expect(unitRequests, 2);
+      expect(gradeRequests, 1);
+      expect(grades.single.subject.unitName, 'Физика');
+    });
+  });
+
+  group('structured academic metadata', () {
+    test('uses and caches the current academic years endpoint', () async {
+      var requests = 0;
+      final client = _restoredClient(
+        MockClient((request) async {
+          requests++;
+          expect(request.url.path, '/ec-server/yearplan/academyears');
+          return http.Response(
+            jsonEncode([
+              {
+                'yearId': 26,
+                'begDate': '2026-09-01',
+                'endDate': '2027-05-31',
+              },
+            ]),
+            200,
+          );
+        }),
+      );
+
+      expect(await client.academicYears(), ['2026/2027']);
+      expect(await client.academicYears(), ['2026/2027']);
+      expect(requests, 1);
+    });
+
+    test('academic years survive new cache and client instances', () async {
+      final store = _MemoryMetadataStore();
+      var requests = 0;
+      http.Client httpClient() => MockClient((request) async {
+            requests++;
+            return _jsonResponse([
+              {
+                'yearId': 26,
+                'begDate': '2026-09-01',
+                'endDate': '2027-05-31',
+              },
+            ]);
+          });
+
+      final first = _restoredClient(
+        httpClient(),
+        cache: EschoolMetadataCache(store: store),
+      );
+      expect(await first.academicYears(), ['2026/2027']);
+
+      final afterRestart = _restoredClient(
+        httpClient(),
+        cache: EschoolMetadataCache(store: store),
+      );
+      expect(await afterRestart.academicYears(), ['2026/2027']);
+      expect(requests, 1);
+    });
+
+    test('resolves class and period from decoded IDs and dates', () async {
+      final paths = <String>[];
+      final client = _restoredClient(
+        MockClient((request) async {
+          paths.add(request.url.path);
+          if (request.url.path.endsWith('/yearplan/academyears')) {
+            return _jsonResponse([
+              {
+                'yearId': 26,
+                'begDate': '2026-09-01',
+                'endDate': '2027-05-31',
+              },
+            ]);
+          }
+          if (request.url.path.endsWith('/usr/getClassByUser')) {
+            return http.Response(
+              jsonEncode([
+                {
+                  'groupId': 77,
+                  'yearId': 26,
+                  'begDateStr': '01.09.2026',
+                },
+              ]),
+              200,
+            );
+          }
+          expect(request.url.queryParameters, {'groupId': '77'});
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {'id': 88, 'name': '1 четверть'},
+              ],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      expect(await client.periodId('2026/20271 четверть'), '88');
+      expect(await client.periodId('2026–2027 • 1 четверть'), '88');
+      expect(
+        await client.periodId('2026-27 учебный год — 1 четверть'),
+        '88',
+      );
+      expect(paths, [
+        '/ec-server/yearplan/academyears',
+        '/ec-server/usr/getClassByUser',
+        '/ec-server/dict/periods/0',
+      ]);
+    });
+  });
+
+  test('homework uses current getPrsDiary read contract', () async {
+    Uri? requested;
+    final client = _restoredClient(
+      MockClient((request) async {
+        requested = request.url;
+        return http.Response(
+          jsonEncode({
+            'lesson': [
+              {
+                'id': 1,
+                'date': 1788048000000,
+                'unit': {'name': 'Алгебра'},
+                'part': [
+                  {
+                    'variant': [
+                      {
+                        'id': 99,
+                        'text': 'Решить задачу',
+                        'file': [
+                          {'id': 7, 'fileName': 'task.pdf'},
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            'user': [],
+          }),
+          200,
+          headers: const {'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    final items = await client.homeworks(d1: 1, d2: 2);
+    expect(requested?.path, '/ec-server/student/getPrsDiary');
+    expect(requested?.queryParameters, {
+      'prsId': '42',
+      'd1': '1',
+      'd2': '2',
+    });
+    expect(items.single[0], '99');
+    expect(items.single[1], 'Алгебра');
+    expect(items.single[3], 'Решить задачу');
+  });
+}
+
+http.Response _jsonResponse(Object? value, [int statusCode = 200]) =>
+    http.Response(
+      jsonEncode(value),
+      statusCode,
+      headers: const {'content-type': 'application/json'},
+    );
+
+EschoolClient _restoredClient(
+  http.Client httpClient, {
+  Duration requestTimeout = eschoolRequestTimeout,
+  EschoolMetadataCache? cache,
+}) {
+  return EschoolClient(
+    username: 'student',
+    credentialHash: null,
+    userId: 42,
+    positionId: 'position-1',
+    cookies: const {'JSESSIONID': 'saved-session'},
+    requestTimeout: requestTimeout,
+    httpClient: httpClient,
+    deviceIdentityStore: _CountingIdentityStore(),
+    cache: cache ?? EschoolMetadataCache(store: _MemoryMetadataStore()),
+  );
+}
+
+class _CountingIdentityStore implements EschoolDeviceIdentityStore {
+  static const deviceId = '12345678901234567890123456789012';
+  static const pushToken =
+      '1234567890123456789012345678901234567890123456789012345678901234';
+
+  final List<String> logins = [];
+
+  @override
+  Future<EschoolDeviceIdentity> identityFor(String normalizedLogin) async {
+    logins.add(normalizedLogin);
+    return const EschoolDeviceIdentity(
+      deviceId: deviceId,
+      pushToken: pushToken,
+    );
+  }
+}
+
+class _FailingIdentityStore implements EschoolDeviceIdentityStore {
+  @override
+  Future<EschoolDeviceIdentity> identityFor(String normalizedLogin) {
+    throw StateError('private secure-storage failure detail');
+  }
+}
+
+class _MemoryDeviceValueStore implements EschoolDeviceValueStore {
+  final Map<String, String> values = {};
+
+  @override
+  Future<String?> read(String key) async => values[key];
+
+  @override
+  Future<void> write(String key, String value) async {
+    values[key] = value;
+  }
+}
+
+class _MemoryMetadataStore implements EschoolMetadataStore {
+  final Map<String, String> values = {};
+
+  @override
+  Future<void> clear() async => values.clear();
+
+  @override
+  Future<Map<String, String>> readAll() async => Map.of(values);
+
+  @override
+  Future<void> remove(String key) async => values.remove(key);
+
+  @override
+  Future<void> write(String key, String value) async => values[key] = value;
 }

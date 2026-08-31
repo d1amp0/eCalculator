@@ -65,8 +65,9 @@ class _HomeworkPageState extends State<HomeworkPage> {
     if (appSession.isDemo) return items;
 
     final tasks = await _databaseHelper.getTasks();
-    final oldestAllowed = DateTime.now().millisecondsSinceEpoch -
-        const Duration(days: 7).inMilliseconds;
+    final oldestAllowed =
+        (widget.now?.call() ?? DateTime.now()).millisecondsSinceEpoch -
+            const Duration(days: 7).inMilliseconds;
     for (final task in tasks) {
       final id = task.id;
       if (id == null) {

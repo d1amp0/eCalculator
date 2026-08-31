@@ -1,11 +1,14 @@
 import 'dart:async';
 
 import 'package:ecalculator/models/homework_item.dart';
+import 'package:ecalculator/other/database_helper.dart';
+import 'package:ecalculator/other/task.dart';
 import 'package:ecalculator/other/themes.dart';
 import 'package:ecalculator/pages/homework_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
   final today = DateTime(2026, 8, 28);
@@ -401,6 +404,73 @@ void main() {
     expect(find.text('Алгебра'), findsNothing);
     expect(find.text('Физика'), findsOneWidget);
   });
+
+  testWidgets(
+    'production cleanup removes only the expired duplicate-text SQLite row',
+    (tester) async {
+      sqfliteFfiInit();
+      late Database database;
+      late DatabaseHelper helper;
+      await tester.runAsync(() async {
+        database = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+        await database.execute('''
+          CREATE TABLE tasks(
+            id INTEGER PRIMARY KEY,
+            subject TEXT,
+            info TEXT,
+            time INTEGER
+          )
+        ''');
+        helper = DatabaseHelper.withDatabase(database);
+        const duplicateInfo = 'Read synthetic chapter';
+        await helper.add(
+          Task(
+            id: 101,
+            subject: 'Expired subject',
+            info: duplicateInfo,
+            time:
+                today.subtract(const Duration(days: 8)).millisecondsSinceEpoch,
+          ),
+        );
+        await helper.add(
+          Task(
+            id: 202,
+            subject: 'Current subject',
+            info: duplicateInfo,
+            time: today.millisecondsSinceEpoch,
+          ),
+        );
+      });
+      addTearDown(database.close);
+      const duplicateInfo = 'Read synthetic chapter';
+
+      await tester.pumpWidget(
+        _app(
+          HomeworkPage(
+            databaseHelper: helper,
+            remoteItemsLoader: () async => [],
+            now: () => today,
+          ),
+        ),
+      );
+      final remaining = await tester.runAsync<List<Task>>(() async {
+        await (() async {
+          while ((await helper.getTasks()).length != 1) {
+            await Future<void>.delayed(const Duration(milliseconds: 1));
+          }
+        })()
+            .timeout(const Duration(seconds: 5));
+        return helper.getTasks();
+      });
+      await tester.pumpAndSettle();
+
+      expect(remaining, hasLength(1));
+      expect(remaining!.single.id, 202);
+      expect(remaining.single.info, duplicateInfo);
+      expect(find.text('Expired subject'), findsNothing);
+      expect(find.text('Current subject'), findsOneWidget);
+    },
+  );
 }
 
 HomeworkItem _item(

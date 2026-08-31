@@ -22,10 +22,21 @@ class _MainPageState extends State<MainPage>
     HomeworkPage(),
     SettingsPage(),
   ];
+  late final List<Widget> _pages;
+  final Set<int> _activatedPages = {0};
   int _pageIndex = 0;
 
   void _onNavTap(int index) {
-    setState(() => _pageIndex = index);
+    setState(() {
+      _pageIndex = index;
+      _activatedPages.add(index);
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = widget.pages ?? defaultPages;
   }
 
   @override
@@ -35,7 +46,15 @@ class _MainPageState extends State<MainPage>
     return Scaffold(
       body: IndexedStack(
         index: _pageIndex,
-        children: widget.pages ?? defaultPages,
+        children: List.generate(
+          _pages.length,
+          (index) => _activatedPages.contains(index)
+              ? KeyedSubtree(
+                  key: ValueKey('main-page-$index'),
+                  child: _pages[index],
+                )
+              : const SizedBox.shrink(),
+        ),
       ),
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(

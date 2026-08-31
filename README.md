@@ -9,9 +9,10 @@ weighted averages, explore possible mark scenarios, and view homework.
 
 ## Project status
 
-Version 4 is in active preparation. This repository currently focuses on a
-safer authentication foundation, maintainable project structure, automated
-checks, and release readiness while preserving the existing interface.
+Version `4.0.0-beta.1` is the first planned public v4 beta. Android is the
+primary beta target. The beta focuses on the August 2026 eSchool protocol,
+session restoration, privacy-safe local persistence, and deterministic offline
+test coverage. Upstream eSchool changes can still affect compatibility.
 
 ## Features
 
@@ -82,15 +83,19 @@ account or repository secrets.
 
 ## Security and privacy
 
-Authentication requests are sent directly from the application to eSchool.
-The project does not intentionally send a user's eSchool password to an
-eCalculator-owned backend. eSchool's reusable derived authentication credential
-and persistent session information are stored through the operating system's
-secure storage. Non-sensitive preferences remain in SharedPreferences.
+Authentication requests are sent directly from the device to eSchool. This
+project does not operate a backend that receives eSchool usernames, passwords,
+derived credentials, or sessions. Password-derived authentication material is
+used only for an explicit foreground login and is discarded after the login
+attempt. When Remember Me is enabled, the authenticated session cookies and
+required session identity metadata are stored using the operating system's
+secure storage. Non-sensitive preferences remain in local app storage.
 
-If “Remember me” is disabled, reusable authentication material is kept only in
-memory for the current app process. If secure storage is unavailable, the app
-does not fall back to storing credentials in SharedPreferences.
+If Remember Me is disabled, authenticated session state is kept only in memory
+for the current app process. Restored-session data never contains the plaintext
+password or its derivative, and generic requests do not replay credentials. If
+secure storage is unavailable, the app does not fall back to storing session or
+credential material in SharedPreferences.
 
 No software can make an absolute security guarantee. Please report suspected
 vulnerabilities according to [SECURITY.md](SECURITY.md), and never include

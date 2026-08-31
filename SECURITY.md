@@ -2,9 +2,9 @@
 
 ## Supported versions
 
-Security fixes are currently targeted at the latest v4 development line and,
-after release, the latest published v4 release. Older historical versions are
-not actively supported.
+Security fixes are currently targeted at the latest v4 beta/development line
+and, after stable release, the latest published v4 release. Older historical
+versions are not actively supported.
 
 ## Reporting a vulnerability
 
@@ -22,3 +22,7 @@ revealing security details.
 You can expect an initial acknowledgement when a maintainer is available.
 Disclosure timing will be coordinated after the issue has been reproduced and
 a remediation plan exists.
+
+The project has no public eSchool test account. Reports and reproductions must
+use synthetic fixtures or local mocks; maintainers will not request a password,
+session cookie, credential hash, MFA material, or raw private response.
