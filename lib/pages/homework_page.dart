@@ -6,7 +6,6 @@ import 'package:ecalculator/other/task.dart';
 import 'package:ecalculator/pages/add_task_page.dart';
 import 'package:ecalculator/pages/task_page.dart';
 import 'package:ecalculator/server/functions.dart';
-import 'package:ecalculator/services/app_session.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -62,8 +61,6 @@ class _HomeworkPageState extends State<HomeworkPage> {
 
   Future<List<HomeworkItem>> _loadProductionLocalItems() async {
     final items = <HomeworkItem>[];
-    if (appSession.isDemo) return items;
-
     final tasks = await _databaseHelper.getTasks();
     final oldestAllowed =
         (widget.now?.call() ?? DateTime.now()).millisecondsSinceEpoch -
@@ -286,8 +283,7 @@ class _HomeworkPageState extends State<HomeworkPage> {
           MaterialPageRoute<void>(
             builder: (_) => AddTaskPage(
               function: _addItem,
-              saveTask: widget.saveTask ??
-                  (appSession.isDemo ? (_) async => null : _databaseHelper.add),
+              saveTask: widget.saveTask ?? _databaseHelper.add,
               datePicker: widget.taskDatePicker,
             ),
           ),

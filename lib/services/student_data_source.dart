@@ -13,14 +13,10 @@ abstract interface class StudentDataSource {
 }
 
 class StudentDataSession {
-  StudentDataSession({StudentDataSource? source, bool isDemo = false})
-      : _source = source,
-        _isDemo = isDemo;
+  StudentDataSession({StudentDataSource? source}) : _source = source;
 
   StudentDataSource? _source;
-  bool _isDemo;
 
-  bool get isDemo => _isDemo;
   bool get hasSource => _source != null;
 
   StudentDataSource get source {
@@ -29,19 +25,12 @@ class StudentDataSession {
     return current;
   }
 
-  void activateReal(StudentDataSource source) {
+  void activate(StudentDataSource source) {
     _source = source;
-    _isDemo = false;
-  }
-
-  void enterDemo(StudentDataSource source) {
-    _source = source;
-    _isDemo = true;
   }
 
   void clear() {
     _source = null;
-    _isDemo = false;
   }
 }
 

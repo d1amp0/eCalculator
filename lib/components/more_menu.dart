@@ -1,6 +1,5 @@
 import 'package:ecalculator/components/logout_dialog.dart';
 import 'package:ecalculator/other/app_theme_colors.dart';
-import 'package:ecalculator/services/app_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -112,7 +111,7 @@ class MoreMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final menu = PopupMenuButton<_MoreMenuAction>(
+    return PopupMenuButton<_MoreMenuAction>(
       key: const ValueKey('more-menu-button'),
       tooltip: 'Открыть меню',
       position: PopupMenuPosition.under,
@@ -157,22 +156,6 @@ class MoreMenu extends StatelessWidget {
               title: Text('Выйти', style: TextStyle(color: scheme.error)),
             ),
           ),
-      ],
-    );
-
-    if (!appSession.isDemo) return menu;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Semantics(
-          label: 'Демонстрационный аккаунт',
-          child: const Chip(
-            avatar: Icon(Icons.science_outlined, size: 16),
-            label: Text('Демо'),
-            visualDensity: VisualDensity.compact,
-          ),
-        ),
-        menu,
       ],
     );
   }

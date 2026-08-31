@@ -1,6 +1,5 @@
 import 'package:ecalculator/domain/academic_calendar.dart';
 import 'package:ecalculator/server/functions.dart';
-import 'package:ecalculator/services/app_session.dart';
 import 'package:ecalculator/storage/settings_storage.dart';
 import 'package:flutter/material.dart';
 
@@ -24,7 +23,6 @@ class PopoverButton extends StatelessWidget {
 
   Future<List<String>> _defaultOptions() async {
     if (_isPeriod) {
-      if (appSession.isDemo) return _quarterOptions;
       final period = await SettingsStorage().readInt('period_type');
       return switch (period) {
         1 => const ['1 полугодие', '2 полугодие', 'Учебный год'],

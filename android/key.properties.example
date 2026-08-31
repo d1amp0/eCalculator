@@ -1,0 +1,4 @@
+storePassword=<your-store-password>
+keyPassword=<your-key-password>
+keyAlias=ecalculator
+storeFile=C:/path/to/ecalculator-upload-keystore.jks

@@ -161,7 +161,6 @@ The initial Calculator tab does not mount the Homework page or request remote
 homework. The first navigation to Homework mounts it once and loads
 `getPrsDiary`; subsequent tab changes preserve its state. Local task cleanup is
 performed by SQLite row ID so duplicate task text cannot delete a newer row.
-Demo mode remains memory-only.
 
 ## Known limitations before stable v4
 

@@ -5,6 +5,46 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+def releaseSigningPropertiesFile = rootProject.file("key.properties")
+def releaseSigningProperties = new Properties()
+if (releaseSigningPropertiesFile.exists()) {
+    releaseSigningPropertiesFile.withInputStream { stream ->
+        releaseSigningProperties.load(stream)
+    }
+}
+
+def requiredReleaseSigningProperties = [
+    "storePassword",
+    "keyPassword",
+    "keyAlias",
+    "storeFile",
+]
+def missingReleaseSigningProperties = requiredReleaseSigningProperties.findAll {
+    !releaseSigningProperties.getProperty(it)?.trim()
+}
+def releaseSigningReady =
+    releaseSigningPropertiesFile.exists() && missingReleaseSigningProperties.isEmpty()
+
+gradle.taskGraph.whenReady { taskGraph ->
+    def releaseTaskRequested = taskGraph.allTasks.any { task ->
+        task.name.toLowerCase().contains("release")
+    }
+    if (!releaseTaskRequested) return
+
+    if (!releaseSigningPropertiesFile.exists()) {
+        throw new GradleException(
+            "Release signing requires android/key.properties. " +
+            "Copy android/key.properties.example and provide your local keystore settings."
+        )
+    }
+    if (!missingReleaseSigningProperties.isEmpty()) {
+        throw new GradleException(
+            "android/key.properties is missing required release signing fields: " +
+            missingReleaseSigningProperties.join(", ")
+        )
+    }
+}
+
 android {
     namespace = "com.d1amp0.ecalculator"
     compileSdk = 37
@@ -30,9 +70,22 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (releaseSigningReady) {
+            release {
+                keyAlias = releaseSigningProperties.getProperty("keyAlias")
+                keyPassword = releaseSigningProperties.getProperty("keyPassword")
+                storeFile = file(releaseSigningProperties.getProperty("storeFile"))
+                storePassword = releaseSigningProperties.getProperty("storePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Release signing is supplied outside the repository.
+            if (releaseSigningReady) {
+                signingConfig = signingConfigs.release
+            }
         }
     }
 }

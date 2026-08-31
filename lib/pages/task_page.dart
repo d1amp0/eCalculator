@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:ecalculator/components/more_menu.dart';
 import 'package:ecalculator/models/homework_item.dart';
 import 'package:ecalculator/other/database_helper.dart';
-import 'package:ecalculator/services/app_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 
@@ -36,7 +35,7 @@ class _TaskPageState extends State<TaskPage> {
     try {
       if (widget.deleteTask case final deleteTask?) {
         await deleteTask(widget.item);
-      } else if (!appSession.isDemo) {
+      } else {
         final id = widget.item.localId;
         if (id == null) {
           throw StateError('Persisted local homework has no database id');
