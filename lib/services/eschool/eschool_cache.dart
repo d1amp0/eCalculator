@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:ecalculator/services/eschool/eschool_diagnostics.dart';
+import 'package:ecalculator/services/eschool/eschool_metadata_store.dart';
 import 'package:ecalculator/services/eschool/eschool_protocol.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+export 'package:ecalculator/services/eschool/eschool_metadata_store.dart';
 
 typedef EschoolClock = DateTime Function();
 
@@ -42,114 +44,6 @@ class EschoolCacheCodec<T extends Object> {
   final T Function(Object? value) decode;
 }
 
-abstract interface class EschoolMetadataStore {
-  Future<Map<String, String>> readAll();
-
-  Future<void> write(String key, String value);
-
-  Future<void> remove(String key);
-
-  Future<void> clear();
-}
-
-/// Optional audit-only visibility checks for a persistent metadata store.
-/// Implementations must never return keys or values to the diagnostic layer.
-abstract interface class EschoolMetadataAuditStore {
-  Future<bool> verifyStringRecord(String key);
-
-  Future<int> visibleRecordCount();
-}
-
-abstract interface class EschoolAsyncPreferences {
-  Future<Set<String>> getKeys({Set<String>? allowList});
-
-  Future<Map<String, Object?>> getAll({Set<String>? allowList});
-
-  Future<void> setString(String key, String value);
-
-  Future<void> remove(String key);
-
-  Future<void> clear({Set<String>? allowList});
-}
-
-class SharedPreferencesEschoolMetadataStore
-    implements EschoolMetadataStore, EschoolMetadataAuditStore {
-  SharedPreferencesEschoolMetadataStore({EschoolAsyncPreferences? preferences})
-      : _preferences = preferences ?? _SharedPreferencesAsyncAdapter();
-
-  static const storagePrefix = 'eschool.metadata.v2.';
-
-  final EschoolAsyncPreferences _preferences;
-
-  String _preferenceKey(String recordKey) => '$storagePrefix$recordKey';
-
-  @override
-  Future<Map<String, String>> readAll() async {
-    final keys = (await _preferences.getKeys())
-        .where((key) => key.startsWith(storagePrefix))
-        .toSet();
-    if (keys.isEmpty) return const {};
-    final values = await _preferences.getAll(allowList: keys);
-    return {
-      for (final entry in values.entries)
-        if (entry.key.startsWith(storagePrefix))
-          entry.key.substring(storagePrefix.length):
-              entry.value is String ? entry.value! as String : '',
-    };
-  }
-
-  @override
-  Future<void> write(String key, String value) =>
-      _preferences.setString(_preferenceKey(key), value);
-
-  @override
-  Future<bool> verifyStringRecord(String key) async {
-    final preferenceKey = _preferenceKey(key);
-    final values = await _preferences.getAll(allowList: {preferenceKey});
-    return values.containsKey(preferenceKey) && values[preferenceKey] is String;
-  }
-
-  @override
-  Future<int> visibleRecordCount() async {
-    final keys = await _preferences.getKeys();
-    return keys.where((key) => key.startsWith(storagePrefix)).length;
-  }
-
-  @override
-  Future<void> remove(String key) => _preferences.remove(_preferenceKey(key));
-
-  @override
-  Future<void> clear() async {
-    final keys = (await _preferences.getKeys())
-        .where((key) => key.startsWith(storagePrefix))
-        .toSet();
-    if (keys.isNotEmpty) await _preferences.clear(allowList: keys);
-  }
-}
-
-class _SharedPreferencesAsyncAdapter implements EschoolAsyncPreferences {
-  SharedPreferencesAsync get _preferences => SharedPreferencesAsync();
-
-  @override
-  Future<void> clear({Set<String>? allowList}) =>
-      _preferences.clear(allowList: allowList);
-
-  @override
-  Future<Map<String, Object?>> getAll({Set<String>? allowList}) =>
-      _preferences.getAll(allowList: allowList);
-
-  @override
-  Future<Set<String>> getKeys({Set<String>? allowList}) =>
-      _preferences.getKeys(allowList: allowList);
-
-  @override
-  Future<void> remove(String key) => _preferences.remove(key);
-
-  @override
-  Future<void> setString(String key, String value) =>
-      _preferences.setString(key, value);
-}
-
 /// Memory-fronted, persistent cache for non-sensitive academic metadata.
 ///
 /// Callers must supply a typed codec so only the approved metadata projection
@@ -163,7 +57,7 @@ class EschoolMetadataCache {
     this.schemaVersion = currentSchemaVersion,
     this.protocolVersion = EschoolProtocol.clientVersion,
   })  : _clock = clock ?? DateTime.now,
-        _store = store ?? SharedPreferencesEschoolMetadataStore(),
+        _store = store ?? createDefaultEschoolMetadataStore(),
         _diagnostics = diagnostics ?? EschoolDiagnostics.fromEnvironment();
 
   static const currentSchemaVersion = 2;

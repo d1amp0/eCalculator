@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:ecalculator/services/eschool/eschool_cache.dart';
 import 'package:ecalculator/services/eschool/eschool_client.dart';
 import 'package:ecalculator/services/eschool/eschool_device_identity.dart';
 import 'package:ecalculator/services/eschool/eschool_session.dart';
@@ -71,6 +72,7 @@ void main() {
           username: username,
           password: password,
           deviceIdentityStore: _FailingIdentityStore(),
+          cache: EschoolMetadataCache(store: _MemoryMetadataStore()),
           httpClient: MockClient((request) async {
             requests++;
             return http.Response('{}', 500);
@@ -419,6 +421,7 @@ EschoolSession _sessionForClient(
       password: password,
       httpClient: httpClient,
       deviceIdentityStore: _FixedIdentityStore(),
+      cache: EschoolMetadataCache(store: _MemoryMetadataStore()),
     ),
   );
 }
@@ -439,6 +442,7 @@ RestoredEschoolClientFactory _restoredClientFactory(http.Client httpClient) {
         positionId: positionId,
         organizationId: organizationId,
         httpClient: httpClient,
+        cache: EschoolMetadataCache(store: _MemoryMetadataStore()),
       );
 }
 
@@ -457,6 +461,22 @@ class _FailingIdentityStore implements EschoolDeviceIdentityStore {
   Future<EschoolDeviceIdentity> identityFor(String normalizedLogin) {
     throw StateError('private secure-storage failure detail');
   }
+}
+
+class _MemoryMetadataStore implements EschoolMetadataStore {
+  final values = <String, String>{};
+
+  @override
+  Future<void> clear() async => values.clear();
+
+  @override
+  Future<Map<String, String>> readAll() async => Map.of(values);
+
+  @override
+  Future<void> remove(String key) async => values.remove(key);
+
+  @override
+  Future<void> write(String key, String value) async => values[key] = value;
 }
 
 class MemoryAuthStorage implements AuthStorage {

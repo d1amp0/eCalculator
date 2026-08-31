@@ -431,15 +431,22 @@ Recommended eCalculator policy:
 | diary/homework | 15–60 minutes plus manual refresh | date range changes, relevant event hint | deadline/completion data changes |
 | mark/dictionary metadata | persistent, 7 days | session/protocol/configuration change, manual refresh | official memory/local caching |
 
-eCalculator implements this as a memory-fronted, versioned
-`SharedPreferencesAsync` cache with one prefixed preference per typed metadata
-record. Independent records avoid whole-cache read-modify-write updates across
-foreground and future background isolates. Cache keys include a hashed,
-normalized account identity plus user, current position, organization, relevant
-year/group/period identifiers, and schema/protocol versions. Corrupt or
-version-mismatched entries are discarded. Logout, session identity changes,
-and explicit academic-metadata invalidation clear both memory and persistence;
-device identity is kept separate.
+eCalculator implements this as a memory-fronted, versioned metadata cache with
+one independently persisted record per typed projection. Windows now selects a
+dedicated SQLite store in the normal application-support location
+(`eschool_metadata.db`, table `metadata_records`); other supported platforms
+retain `SharedPreferencesAsync`. The SQLite table contains only `key TEXT
+PRIMARY KEY` and `value TEXT NOT NULL`, and a single-record update uses upsert
+semantics rather than rewriting the whole cache. TTL timestamps remain inside
+the existing versioned record envelope.
+
+The store change does not alter cache keys, scopes, typed codecs, schema or
+protocol versions, TTL policies, rejection rules, or the memory front. Cache
+keys include a hashed, normalized account identity plus user, current position,
+organization, relevant year/group/period identifiers, and schema/protocol
+versions. Corrupt or version-mismatched entries are discarded. Logout, session
+identity changes, and explicit academic-metadata invalidation clear both memory
+and the selected persistence backend; device identity is kept separate.
 
 Dynamic totals, averages, grades, homework, credentials, cookies, MFA tokens,
 and raw private responses are never persisted in this cache. Every explicit
@@ -470,10 +477,13 @@ initial Calculator tab no longer mounts `HomeworkPage` or calls
 `IndexedStack` then preserves its state across tab switches.
 
 The next real Windows restart reported `cache-init` with zero discovered,
-accepted, and rejected records. This is evidence that no prefixed records were
-visible through `SharedPreferencesAsync` at startup; it is not evidence of TTL,
-scope, protocol-version, or codec rejection. Cache scope therefore remains
-unchanged.
+accepted, and rejected records. Before exit, the same controlled run reported
+successful exact-key read-back (`cache-write verified=true`) and storage summary
+counts increasing from one through four. This confirms a cross-process
+durability failure of the current Windows `SharedPreferencesAsync` backend,
+rather than TTL, scope, protocol-version, or codec rejection. Cache scope
+therefore remains unchanged, and only the Windows persistence backend is
+replaced.
 
 The locked packages are `shared_preferences 2.5.3` and
 `shared_preferences_windows 2.4.1`. Inspection of those installed package
@@ -486,15 +496,45 @@ the boolean result returned by the disk writer. Consequently, a completed
 `setString` followed by an immediate successful read verifies same-process API
 visibility but does not independently prove durable disk persistence.
 
-In audit mode, every completed metadata `setString` is now followed by an exact
-key read-back and emits `cache-write` with only the safe cache kind and a
-boolean `verified`. It also emits `cache-storage-summary` with only the count of
-eSchool-prefixed keys visible through `SharedPreferencesAsync.getKeys`. A
-read-back or summary failure emits only `storage-read-failed`. If a controlled
-run shows verified writes and visible records before exit but zero records
-after a full restart, record that as Windows durability evidence and evaluate
-the existing application SQLite store for non-sensitive academic metadata;
-authentication and MFA material must remain outside SQLite.
+In audit mode, every completed metadata write is followed by an exact-record
+read-back and emits `cache-write` with only the safe cache kind and a boolean
+`verified`. It also emits `cache-storage-summary` with only the number of
+visible eSchool metadata records. A read-back or summary failure emits only
+`storage-read-failed`. The diagnostic layer never receives the SQLite path,
+record key, scope, identifiers, stored value, record JSON, or exception text.
+
+File-backed automated tests close store instance A, reopen the same database
+through a new instance B, and verify multiple records, updates, removal, clear,
+and audit visibility. This exercises disk durability more closely than an
+in-memory database, but it does **not** yet establish success in the packaged
+Windows application across a real process restart.
+
+### Windows manual restart verification after the SQLite change
+
+1. Start the packaged Windows app with
+   `--dart-define=ESCHOOL_PROTOCOL_AUDIT=true` and Remember Me enabled.
+2. Load grades normally so academic years, classes, periods, and subjects are
+   warm. Confirm safe `cache-write` events report `verified=true` and the
+   storage summary reports a positive record count.
+3. Fully terminate the application process; do not merely navigate back or
+   close a page.
+4. Start the same build again and open grades for the same account and period.
+5. Expected authentication behavior is `GET /state`, restored-session, HTTP
+   200, with no `/login`.
+6. Expected cache behavior is `cache-init` with `discovered > 0`, `accepted >
+   0`, and `rejected = 0`, followed by cache hits for already warmed academic
+   years, classes, periods, and subjects. The exact record count is not a
+   contract.
+7. An explicit grades refresh must still call
+   `GET /student/getDiaryPeriod_`: grade snapshots are intentionally outside
+   the persistent metadata cache.
+
+Only the existing typed academic metadata projections may enter the SQLite
+store. Credentials and password derivatives, cookies/JSESSIONID, route cookies,
+MFA data, device secrets or push credentials, raw `/state`, profile/contact
+data, raw HTTP bodies, grades, homework, and arbitrary server JSON remain
+outside it. Authentication and session material continue to use the existing
+secure/session storage.
 
 ## 11. Notification/live-update architecture
 
