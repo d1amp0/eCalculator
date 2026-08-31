@@ -355,6 +355,146 @@ void main() {
       expect(events.join(), isNot(contains('private-cache-value')));
     });
 
+    test('audit verifies each SharedPreferences write and visible count',
+        () async {
+      final events = <String>[];
+      final preferences = _MemoryAsyncPreferences();
+      final cache = EschoolMetadataCache(
+        store: SharedPreferencesEschoolMetadataStore(
+          preferences: preferences,
+        ),
+        diagnostics: EschoolDiagnostics(enabled: true, sink: events.add),
+      );
+
+      await cache.put(
+        _accountA,
+        'private-first-value',
+        const Duration(days: 30),
+        _stringCodec,
+      );
+      await cache.put(
+        _accountB,
+        'private-second-value',
+        const Duration(days: 30),
+        _stringCodec,
+      );
+
+      final metadata = events.map(_decodeAuditEvent).toList();
+      expect(
+        metadata.where((event) => event['event'] == 'cache-write'),
+        hasLength(2),
+      );
+      expect(
+        metadata.where((event) => event['event'] == 'cache-write'),
+        everyElement(
+          allOf(
+            containsPair('kind', 'subjects'),
+            containsPair('verified', true),
+          ),
+        ),
+      );
+      expect(
+        metadata,
+        contains(
+          allOf(
+            containsPair('event', 'cache-storage-summary'),
+            containsPair('records', 1),
+          ),
+        ),
+      );
+      expect(
+        metadata,
+        contains(
+          allOf(
+            containsPair('event', 'cache-storage-summary'),
+            containsPair('records', 2),
+          ),
+        ),
+      );
+      expect(events.join(), isNot(contains(_accountA.storageKey)));
+      expect(events.join(), isNot(contains(_accountA.scope)));
+      expect(events.join(), isNot(contains('private-first-value')));
+      expect(events.join(), isNot(contains('private-second-value')));
+    });
+
+    test('audit reports an unverified completed SharedPreferences write',
+        () async {
+      final events = <String>[];
+      final preferences = _MemoryAsyncPreferences()..discardWrites = true;
+      final cache = EschoolMetadataCache(
+        store: SharedPreferencesEschoolMetadataStore(
+          preferences: preferences,
+        ),
+        diagnostics: EschoolDiagnostics(enabled: true, sink: events.add),
+      );
+
+      await cache.put(
+        _accountA,
+        'private-discarded-value',
+        const Duration(days: 30),
+        _stringCodec,
+      );
+
+      final metadata = events.map(_decodeAuditEvent).toList();
+      expect(
+        metadata,
+        contains(
+          allOf(
+            containsPair('event', 'cache-write'),
+            containsPair('kind', 'subjects'),
+            containsPair('verified', false),
+          ),
+        ),
+      );
+      expect(
+        metadata,
+        contains(
+          allOf(
+            containsPair('event', 'cache-storage-summary'),
+            containsPair('records', 0),
+          ),
+        ),
+      );
+      expect(events.join(), isNot(contains('private-discarded-value')));
+    });
+
+    test('audit reports only a safe category when write read-back fails',
+        () async {
+      final events = <String>[];
+      final preferences = _MemoryAsyncPreferences()..failGetAll = true;
+      final cache = EschoolMetadataCache(
+        store: SharedPreferencesEschoolMetadataStore(
+          preferences: preferences,
+        ),
+        diagnostics: EschoolDiagnostics(enabled: true, sink: events.add),
+      );
+
+      await cache.put(
+        _accountA,
+        'private-read-back-value',
+        const Duration(days: 30),
+        _stringCodec,
+      );
+
+      final metadata = events.map(_decodeAuditEvent).toList();
+      expect(
+        metadata,
+        contains(
+          allOf(
+            containsPair('event', 'cache-storage-failure'),
+            containsPair('kind', 'subjects'),
+            containsPair('reason', 'storage-read-failed'),
+          ),
+        ),
+      );
+      expect(
+        metadata.where((event) => event['event'] == 'cache-write'),
+        isEmpty,
+      );
+      expect(events.join(), isNot(contains('private read-back exception')));
+      expect(events.join(), isNot(contains('private-read-back-value')));
+    });
+
     test('audit classifies rejected persisted records without values',
         () async {
       final store = _MemoryMetadataStore();
@@ -557,6 +697,8 @@ class _FailingMetadataStore extends _MemoryMetadataStore {
 
 class _MemoryAsyncPreferences implements EschoolAsyncPreferences {
   final Map<String, Object?> values = {};
+  bool discardWrites = false;
+  bool failGetAll = false;
 
   @override
   Future<void> clear({Set<String>? allowList}) async {
@@ -568,11 +710,14 @@ class _MemoryAsyncPreferences implements EschoolAsyncPreferences {
   }
 
   @override
-  Future<Map<String, Object?>> getAll({Set<String>? allowList}) async => {
-        for (final entry in values.entries)
-          if (allowList == null || allowList.contains(entry.key))
-            entry.key: entry.value,
-      };
+  Future<Map<String, Object?>> getAll({Set<String>? allowList}) async {
+    if (failGetAll) throw StateError('private read-back exception');
+    return {
+      for (final entry in values.entries)
+        if (allowList == null || allowList.contains(entry.key))
+          entry.key: entry.value,
+    };
+  }
 
   @override
   Future<Set<String>> getKeys({Set<String>? allowList}) async => values.keys
@@ -583,5 +728,7 @@ class _MemoryAsyncPreferences implements EschoolAsyncPreferences {
   Future<void> remove(String key) async => values.remove(key);
 
   @override
-  Future<void> setString(String key, String value) async => values[key] = value;
+  Future<void> setString(String key, String value) async {
+    if (!discardWrites) values[key] = value;
+  }
 }

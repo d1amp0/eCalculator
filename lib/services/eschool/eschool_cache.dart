@@ -52,6 +52,14 @@ abstract interface class EschoolMetadataStore {
   Future<void> clear();
 }
 
+/// Optional audit-only visibility checks for a persistent metadata store.
+/// Implementations must never return keys or values to the diagnostic layer.
+abstract interface class EschoolMetadataAuditStore {
+  Future<bool> verifyStringRecord(String key);
+
+  Future<int> visibleRecordCount();
+}
+
 abstract interface class EschoolAsyncPreferences {
   Future<Set<String>> getKeys({Set<String>? allowList});
 
@@ -64,7 +72,8 @@ abstract interface class EschoolAsyncPreferences {
   Future<void> clear({Set<String>? allowList});
 }
 
-class SharedPreferencesEschoolMetadataStore implements EschoolMetadataStore {
+class SharedPreferencesEschoolMetadataStore
+    implements EschoolMetadataStore, EschoolMetadataAuditStore {
   SharedPreferencesEschoolMetadataStore({EschoolAsyncPreferences? preferences})
       : _preferences = preferences ?? _SharedPreferencesAsyncAdapter();
 
@@ -92,6 +101,19 @@ class SharedPreferencesEschoolMetadataStore implements EschoolMetadataStore {
   @override
   Future<void> write(String key, String value) =>
       _preferences.setString(_preferenceKey(key), value);
+
+  @override
+  Future<bool> verifyStringRecord(String key) async {
+    final preferenceKey = _preferenceKey(key);
+    final values = await _preferences.getAll(allowList: {preferenceKey});
+    return values.containsKey(preferenceKey) && values[preferenceKey] is String;
+  }
+
+  @override
+  Future<int> visibleRecordCount() async {
+    final keys = await _preferences.getKeys();
+    return keys.where((key) => key.startsWith(storagePrefix)).length;
+  }
 
   @override
   Future<void> remove(String key) => _preferences.remove(_preferenceKey(key));
@@ -390,6 +412,16 @@ class EschoolMetadataCache {
     if (record == null) return;
     try {
       await _store.write(storageKey, jsonEncode(record.toJson()));
+      if (_diagnostics.enabled) {
+        final store = _store;
+        if (store is EschoolMetadataAuditStore) {
+          await _auditSuccessfulWrite(
+            store as EschoolMetadataAuditStore,
+            storageKey: storageKey,
+            kind: record.key.kind,
+          );
+        }
+      }
     } on Object {
       _diagnostics.cacheEvent(
         event: 'cache-storage-failure',
@@ -397,6 +429,43 @@ class EschoolMetadataCache {
         reason: 'storage-write-failed',
       );
       // Keep the in-memory cache usable when persistence is unavailable.
+    }
+  }
+
+  Future<void> _auditSuccessfulWrite(
+    EschoolMetadataAuditStore auditStore, {
+    required String storageKey,
+    required String kind,
+  }) async {
+    final bool verified;
+    try {
+      verified = await auditStore.verifyStringRecord(storageKey);
+    } on Object {
+      _diagnostics.cacheEvent(
+        event: 'cache-storage-failure',
+        kind: kind,
+        reason: 'storage-read-failed',
+      );
+      return;
+    }
+    _diagnostics.cacheEvent(
+      event: 'cache-write',
+      kind: kind,
+      verified: verified,
+    );
+
+    try {
+      final records = await auditStore.visibleRecordCount();
+      _diagnostics.cacheEvent(
+        event: 'cache-storage-summary',
+        records: records,
+      );
+    } on Object {
+      _diagnostics.cacheEvent(
+        event: 'cache-storage-failure',
+        kind: kind,
+        reason: 'storage-read-failed',
+      );
     }
   }
 

@@ -78,6 +78,7 @@ class EschoolDiagnostics {
     required String event,
     String? kind,
     String? reason,
+    bool? verified,
     int? discovered,
     int? accepted,
     int? rejected,
@@ -88,6 +89,7 @@ class EschoolDiagnostics {
       'event': _safeCacheEvent(event),
       if (kind != null) 'kind': _safeCacheKind(kind),
       if (reason != null) 'reason': _safeCacheReason(reason),
+      if (verified != null) 'verified': verified,
       if (discovered != null) 'discovered': discovered,
       if (accepted != null) 'accepted': accepted,
       if (rejected != null) 'rejected': rejected,
@@ -226,6 +228,8 @@ const _cacheEvents = {
   'cache-invalidated',
   'cache-cleared',
   'cache-storage-failure',
+  'cache-write',
+  'cache-storage-summary',
 };
 const _cacheKinds = {
   'academic-years',

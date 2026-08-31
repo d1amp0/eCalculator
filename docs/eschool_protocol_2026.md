@@ -469,6 +469,33 @@ initial Calculator tab no longer mounts `HomeworkPage` or calls
 `getPrsDiary`; the first Homework navigation mounts it once, and the existing
 `IndexedStack` then preserves its state across tab switches.
 
+The next real Windows restart reported `cache-init` with zero discovered,
+accepted, and rejected records. This is evidence that no prefixed records were
+visible through `SharedPreferencesAsync` at startup; it is not evidence of TTL,
+scope, protocol-version, or codec rejection. Cache scope therefore remains
+unchanged.
+
+The locked packages are `shared_preferences 2.5.3` and
+`shared_preferences_windows 2.4.1`. Inspection of those installed package
+sources confirms that the current `SharedPreferencesAsync` use is valid:
+`setString`, exact allow-list reads, `getKeys`, `getAll`, and prefixed keys are
+supported. On Windows 2.4.1, async preferences are backed by
+`shared_preferences.json` in the application support directory. The Windows
+implementation also keeps an in-process map, and its async `_setValue` ignores
+the boolean result returned by the disk writer. Consequently, a completed
+`setString` followed by an immediate successful read verifies same-process API
+visibility but does not independently prove durable disk persistence.
+
+In audit mode, every completed metadata `setString` is now followed by an exact
+key read-back and emits `cache-write` with only the safe cache kind and a
+boolean `verified`. It also emits `cache-storage-summary` with only the count of
+eSchool-prefixed keys visible through `SharedPreferencesAsync.getKeys`. A
+read-back or summary failure emits only `storage-read-failed`. If a controlled
+run shows verified writes and visible records before exit but zero records
+after a full restart, record that as Windows durability evidence and evaluate
+the existing application SQLite store for non-sensitive academic metadata;
+authentication and MFA material must remain outside SQLite.
+
 ## 11. Notification/live-update architecture
 
 The official client defines:
