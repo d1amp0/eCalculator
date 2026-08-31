@@ -14,8 +14,16 @@ as a privacy-safe live confirmation.
 - Authentication and academic requests travel directly between the app and
   `https://app.eschool.center/ec-server` over HTTPS.
 - No eCalculator-owned backend receives credentials or session material.
-- Reusable authentication material and the session cookie jar use operating
-  system secure storage when Remember Me is enabled.
+- The plaintext password exists only during an explicit foreground login. Its
+  SHA-256 derivative is submitted to `/login`, consumed by that login attempt,
+  and then discarded; it is not persisted.
+- When Remember Me is enabled, the authenticated session cookies and required
+  session identity metadata (`username`, `userId`, `positionId`, and
+  `organizationId`) use operating system secure storage. The restored-session
+  payload contains neither the plaintext password nor its derivative.
+- When Remember Me is disabled, authenticated session state remains in memory
+  only for the current app process. Generic requests and session restoration do
+  not replay credentials.
 - Academic metadata persistence never stores credentials, cookies, MFA data,
   device secrets, raw `/state` data, grades, homework, or raw HTTP bodies.
 - CI and automated tests use only synthetic fixtures, fakes, mocks, and local
