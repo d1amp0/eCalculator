@@ -23,17 +23,6 @@ test coverage. Upstream eSchool changes can still affect compatibility.
 - View eSchool homework and manage locally created tasks.
 - Store theme, academic-period, and calculation preferences locally.
 
-## Demo mode
-
-Choose **«Войти в демо»** on the login screen to evaluate the calculator,
-develop UI changes, or run through the product flow without an eSchool
-account. Demo marks and homework are deterministic fictional fixtures and do
-not describe a real student.
-
-Demo mode is fully local: it does not connect to eSchool, restore an eSchool
-session, or read and overwrite saved eSchool credentials. Leaving demo mode
-returns to login and leaves any previously remembered real account untouched.
-
 ## Screenshots
 
 Screenshots for the v4 interface will be added before the stable release.
@@ -58,13 +47,33 @@ flutter pub get
 flutter run
 ```
 
-For an Android APK:
+For an Android debug APK:
 
 ```sh
-flutter build apk --release
+flutter build apk --debug --no-pub
 ```
 
-Release signing is intentionally not configured in the repository.
+### Android release signing
+
+Release builds require an owner-managed upload keystore that is never stored
+in this repository:
+
+1. Create and securely back up your own Android upload keystore. Keep it for
+   the lifetime of the application because future updates must use the same
+   signing identity.
+2. Copy `android/key.properties.example` to the local ignored file
+   `android/key.properties`.
+3. Replace every placeholder with the local keystore path, alias, and
+   passwords. Never commit `key.properties`, a keystore, or signing secrets.
+4. Build the signed release APK:
+
+```sh
+flutter build apk --release --no-pub
+```
+
+The output is `build/app/outputs/flutter-apk/app-release.apk`. A release build
+fails with a clear configuration error when the local signing file is absent
+or incomplete; debug builds do not require it.
 
 ## Development
 

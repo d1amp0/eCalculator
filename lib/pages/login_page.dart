@@ -134,14 +134,6 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  void enterDemo() {
-    appSession.enterDemo();
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const MainPage()),
-    );
-  }
-
   @override
   void initState() {
     super.initState();
@@ -166,152 +158,172 @@ class _LoginPageState extends State<LoginPage> {
     }
     return Scaffold(
       body: SafeArea(
-        child: Column(
-          children: [
-            const Row(children: [Spacer(), MoreMenu(canLeave: false)]),
-            const Spacer(),
-            Center(
-              child: Container(
-                height: 410,
-                width: 340,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  shape: BoxShape.rectangle,
-                  color: Theme.of(context).colorScheme.secondary,
-                ),
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
                 child: Column(
                   children: [
-                    Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Image.asset(
-                          Theme.of(context).textTheme.displayLarge?.color !=
-                                  Colors.white
-                              ? 'lib/images/icon_new.png'
-                              : 'lib/images/icon_black.png',
-                          height: 96,
-                          width: 96,
-                          cacheWidth: 192,
-                        ),
-                        Text(
-                          'eCalculator',
-                          style: TextStyle(
-                            fontSize: 28,
-                            color: colors.defaultPrimary,
+                    const Row(
+                      children: [Spacer(), MoreMenu(canLeave: false)],
+                    ),
+                    const Spacer(),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Center(
+                        child: Container(
+                          width: double.infinity,
+                          constraints: const BoxConstraints(maxWidth: 340),
+                          padding: const EdgeInsets.only(bottom: 20),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            shape: BoxShape.rectangle,
+                            color: Theme.of(context).colorScheme.secondary,
                           ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  Image.asset(
+                                    Theme.of(context)
+                                                .textTheme
+                                                .displayLarge
+                                                ?.color !=
+                                            Colors.white
+                                        ? 'lib/images/icon_new.png'
+                                        : 'lib/images/icon_black.png',
+                                    height: 96,
+                                    width: 96,
+                                    cacheWidth: 192,
+                                  ),
+                                  Text(
+                                    'eCalculator',
+                                    style: TextStyle(
+                                      fontSize: 28,
+                                      color: colors.defaultPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              MyInput(
+                                controller: usernameController,
+                                hint: 'Логин',
+                                onChanged: (_) => checkFields(),
+                              ),
+                              const SizedBox(height: 20),
+                              MyInput(
+                                controller: passwordController,
+                                hint: 'Пароль',
+                                onChanged: (_) => checkFields(),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.only(left: 10.0),
+                                child: Row(
+                                  children: [
+                                    Checkbox(
+                                      activeColor:
+                                          Theme.of(context).colorScheme.primary,
+                                      side:
+                                          const BorderSide(color: Colors.grey),
+                                      value: rememberMe,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(5.0),
+                                      ),
+                                      onChanged: (value) => remember(value),
+                                    ),
+                                    const Text(
+                                      'Запомнить меня',
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: login,
+                                behavior: HitTestBehavior.opaque,
+                                child: AnimatedContainer(
+                                  height: 48,
+                                  margin: const EdgeInsets.symmetric(
+                                      horizontal: 25.0),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 25.0),
+                                  decoration: BoxDecoration(
+                                    color: isEnabled
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Theme.of(context).disabledColor,
+                                    borderRadius: BorderRadius.circular(10.0),
+                                  ),
+                                  duration: const Duration(milliseconds: 200),
+                                  curve: Curves.easeInOut,
+                                  child: Center(
+                                    child: isLoading
+                                        ? SizedBox(
+                                            height: 20,
+                                            width: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor:
+                                                  AlwaysStoppedAnimation<Color>(
+                                                Theme.of(context)
+                                                        .textTheme
+                                                        .displaySmall
+                                                        ?.color ??
+                                                    Colors.white,
+                                              ),
+                                            ),
+                                          )
+                                        : Text(
+                                            'Войти',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              color: Theme.of(context)
+                                                  .textTheme
+                                                  .displaySmall
+                                                  ?.color,
+                                            ),
+                                          ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      'Связаться с разработчиком',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Theme.of(context).textTheme.displaySmall?.color,
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        MyIconButton(
+                          path: 'lib/images/telegram_icon.png',
+                          type: 0,
+                        ),
+                        SizedBox(width: 100),
+                        MyIconButton(
+                          path: 'lib/images/mail_icon.png',
+                          type: 1,
                         ),
                       ],
                     ),
-                    const SizedBox(height: 2),
-                    MyInput(
-                      controller: usernameController,
-                      hint: 'Логин',
-                      onChanged: (_) => checkFields(),
-                    ),
-                    const SizedBox(height: 20),
-                    MyInput(
-                      controller: passwordController,
-                      hint: 'Пароль',
-                      onChanged: (_) => checkFields(),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.only(left: 10.0),
-                      child: Row(
-                        children: [
-                          Checkbox(
-                            activeColor: Theme.of(context).colorScheme.primary,
-                            side: const BorderSide(color: Colors.grey),
-                            value: rememberMe,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(5.0),
-                            ),
-                            onChanged: (value) => remember(value),
-                          ),
-                          const Text(
-                            'Запомнить меня',
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: login,
-                      behavior: HitTestBehavior.opaque,
-                      child: AnimatedContainer(
-                        height: 48,
-                        margin: const EdgeInsets.symmetric(horizontal: 25.0),
-                        padding: const EdgeInsets.symmetric(horizontal: 25.0),
-                        decoration: BoxDecoration(
-                          color: isEnabled
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).disabledColor,
-                          borderRadius: BorderRadius.circular(10.0),
-                        ),
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeInOut,
-                        child: Center(
-                          child: isLoading
-                              ? SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Theme.of(context)
-                                              .textTheme
-                                              .displaySmall
-                                              ?.color ??
-                                          Colors.white,
-                                    ),
-                                  ),
-                                )
-                              : Text(
-                                  'Войти',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    color: Theme.of(context)
-                                        .textTheme
-                                        .displaySmall
-                                        ?.color,
-                                  ),
-                                ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextButton.icon(
-                      key: const ValueKey('login-demo-button'),
-                      onPressed: isLoading ? null : enterDemo,
-                      icon: const Icon(Icons.science_outlined),
-                      label: const Text('Войти в демо'),
-                    ),
-                    Text(
-                      'Без аккаунта eSchool и подключения к сети',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
+                    const SizedBox(height: 15),
                   ],
                 ),
               ),
             ),
-            const Spacer(),
-            Text(
-              'Связаться с разработчиком',
-              style: TextStyle(
-                fontSize: 18,
-                color: Theme.of(context).textTheme.displaySmall?.color,
-              ),
-            ),
-            const SizedBox(height: 15),
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                MyIconButton(path: 'lib/images/telegram_icon.png', type: 0),
-                SizedBox(width: 100),
-                MyIconButton(path: 'lib/images/mail_icon.png', type: 1),
-              ],
-            ),
-            const SizedBox(height: 15),
-          ],
+          ),
         ),
       ),
     );

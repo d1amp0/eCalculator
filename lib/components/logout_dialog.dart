@@ -6,7 +6,6 @@ Future<void> showLogoutDialog(
   BuildContext context, {
   Future<void> Function()? logout,
 }) {
-  final wasDemo = appSession.isDemo;
   final logoutAction = logout ?? appSession.exit;
   var isLoggingOut = false;
 
@@ -17,11 +16,10 @@ Future<void> showLogoutDialog(
       builder: (dialogBuildContext, setDialogState) => AlertDialog(
         backgroundColor: Theme.of(dialogBuildContext).colorScheme.surface,
         surfaceTintColor: Colors.transparent,
-        title: Text(wasDemo ? 'Выйти из демо?' : 'Выйти из аккаунта?'),
-        content: Text(
-          wasDemo
-              ? 'Демо-сценарий будет сброшен. Сохранённый аккаунт eSchool не изменится.'
-              : 'Сохранённые данные входа eSchool будут удалены. Настройки приложения останутся без изменений.',
+        title: const Text('Выйти из аккаунта?'),
+        content: const Text(
+          'Сохранённые данные входа eSchool будут удалены. '
+          'Настройки приложения останутся без изменений.',
         ),
         actions: [
           TextButton(
@@ -40,8 +38,8 @@ Future<void> showLogoutDialog(
                       Navigator.of(dialogContext).pop();
                       Navigator.of(context).pushAndRemoveUntil(
                         MaterialPageRoute<void>(
-                          builder: (_) => LoginPage(
-                            skipSessionRestore: wasDemo,
+                          builder: (_) => const LoginPage(
+                            skipSessionRestore: true,
                           ),
                         ),
                         (route) => false,

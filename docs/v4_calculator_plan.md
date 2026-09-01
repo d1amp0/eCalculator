@@ -23,7 +23,8 @@
 - `MarkPage`: result, responsive mark wrap, and current-scenario summary.
 - `MarkButton`: compact mark chip with explicit new/edited/excluded states.
 - Bottom sheets: quick mark value, sign, and coefficient input.
-- `StudentDataSource`: common boundary for eSchool and deterministic demo data.
+- `StudentDataSource`: boundary between the UI and authenticated student data,
+  with test-local fakes used for deterministic automated coverage.
 
 ## State model
 

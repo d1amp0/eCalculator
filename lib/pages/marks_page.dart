@@ -6,8 +6,6 @@ import 'package:ecalculator/domain/student_data.dart';
 import 'package:ecalculator/pages/mark_page.dart';
 import 'package:ecalculator/other/app_theme_colors.dart';
 import 'package:ecalculator/server/functions.dart';
-import 'package:ecalculator/services/app_session.dart';
-import 'package:ecalculator/services/demo/demo_data_source.dart';
 import 'package:ecalculator/storage/settings_storage.dart';
 import 'package:flutter/material.dart';
 
@@ -54,11 +52,6 @@ class _MarksPageState extends State<MarksPage>
       periodController.text = widget.initialPeriod!;
       return;
     }
-    if (appSession.isDemo) {
-      yearController.text = DemoDataSource.demoYear;
-      periodController.text = DemoDataSource.demoPeriod;
-      return;
-    }
     final year =
         await settings.readString('year') ?? AcademicCalendar.currentYear();
     if (!_isCurrent(generation)) return;
@@ -100,12 +93,10 @@ class _MarksPageState extends State<MarksPage>
         averages = changeMarks(loaded);
         isLoading = false;
       });
-      if (!appSession.isDemo) {
-        await settings.writeString('year', year);
-        if (!_isCurrent(generation)) return;
-        await settings.writeString('period', periodName);
-        if (!_isCurrent(generation)) return;
-      }
+      await settings.writeString('year', year);
+      if (!_isCurrent(generation)) return;
+      await settings.writeString('period', periodName);
+      if (!_isCurrent(generation)) return;
     } on Object {
       if (!_isCurrent(generation)) return;
       setState(() => isLoading = false);
